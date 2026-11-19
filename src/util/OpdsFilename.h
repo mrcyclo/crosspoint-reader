@@ -16,3 +16,9 @@ enum class OpdsFilenameFormat : uint8_t {
 // for a downloaded OPDS book, according to `format`. When the author is empty,
 // every format collapses to just the sanitized title. Pure: no I/O, no globals.
 std::string opdsBookFilename(const std::string& author, const std::string& title, OpdsFilenameFormat format);
+
+// Full SD path for a downloaded OPDS book: SETTINGS.opdsDownloadFolder (created
+// on demand, SD root when empty or uncreatable) plus opdsBookFilename() in
+// SETTINGS.opdsFilenameFormat. Defined in OpdsDownloadPath.cpp so the pure
+// helper above stays linkable by the native test.
+std::string opdsDownloadPath(const std::string& author, const std::string& title);

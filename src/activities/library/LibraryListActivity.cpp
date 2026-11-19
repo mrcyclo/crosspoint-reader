@@ -15,7 +15,9 @@
 #include <cstdio>
 
 #include "CrossPointSettings.h"
+#include "LibrarySyncActivity.h"
 #include "MappedInputManager.h"
+#include "OpdsServerStore.h"
 #include "RecentBooksStore.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
@@ -84,6 +86,7 @@ void LibraryListActivity::onEnter() {
   app.on(ACTION_SEARCH, &LibraryListActivity::searchActionTrampoline, this);
   app.on(ACTION_REBUILD, &LibraryListActivity::rebuildActionTrampoline, this);
   app.on(ACTION_BACK, &LibraryListActivity::backActionTrampoline, this);
+  app.on(ACTION_SYNC_BOOKS, &LibraryListActivity::syncBooksActionTrampoline, this);
 
   // Recent is backed by the resident store. Prune before opening the index so
   // its persistence write never overlaps the long-lived index reader.
@@ -273,12 +276,19 @@ void LibraryListActivity::showRecentBookOptions(const int entry) {
     }
   }
 
-  const char* STORE_OPTIONS[] = {tr(STR_OPEN), tr(STR_REMOVE_FROM_RECENTS), tr(STR_DELETE), tr(STR_LIBRARY_REBUILD)};
-  const char* INDEX_OPTIONS[] = {tr(STR_OPEN), tr(STR_DELETE), tr(STR_LIBRARY_REBUILD)};
+  const bool withSync = syncBooksAvailable();
+  const char* STORE_OPTIONS[] = {tr(STR_OPEN), tr(STR_REMOVE_FROM_RECENTS), tr(STR_DELETE), tr(STR_LIBRARY_REBUILD),
+                                 tr(STR_SYNC_BOOKS)};
+  const char* INDEX_OPTIONS[] = {tr(STR_OPEN), tr(STR_DELETE), tr(STR_LIBRARY_REBUILD), tr(STR_SYNC_BOOKS)};
+  const int optionCount = (isStoreRow ? 4 : 3) + (withSync ? 1 : 0);
   app.clearTapFlash();
-  optionPopup.show(tr(STR_LIBRARY), title.c_str(), isStoreRow ? STORE_OPTIONS : INDEX_OPTIONS, isStoreRow ? 4 : 3, 0,
-                   [this, path, title, isStoreRow](const int choice) {
+  optionPopup.show(tr(STR_LIBRARY), title.c_str(), isStoreRow ? STORE_OPTIONS : INDEX_OPTIONS, optionCount, 0,
+                   [this, path, title, isStoreRow, withSync, optionCount](const int choice) {
                      swallowHeldReleases();
+                     if (withSync && choice == optionCount - 1) {
+                       launchSyncBooks();
+                       return;
+                     }
                      switch (choice) {
                        case 0:
                          openBookByPath(path);
@@ -291,19 +301,44 @@ void LibraryListActivity::showRecentBookOptions(const int entry) {
                          }
                          break;
                        case 2:
-                         if (isStoreRow)
+                         if (isStoreRow) {
                            promptDeleteBookByPath(path, title);
-                         else
+                         } else {
                            promptRebuildIndex();
+                         }
                          break;
                        case 3:
-                         if (isStoreRow) promptRebuildIndex();
+                         if (isStoreRow) {
+                           promptRebuildIndex();
+                         }
                          break;
                        default:
                          break;
                      }
                    });
   requestUpdate();
+}
+
+bool LibraryListActivity::syncBooksAvailable() { return OPDS_STORE.getCount() > 0; }
+
+void LibraryListActivity::launchSyncBooks() {
+  app.clearTapFlash();
+  startActivityForResult(
+      std::make_unique<LibrarySyncActivity>(renderer, mappedInput),
+      [this](const ActivityResult& result) {
+        const auto* sync = std::get_if<SyncBooksResult>(&result.data);
+        if (sync && sync->changed) {
+          // A moved book leaves its old path in the store; prune with the index closed.
+          index.close();
+          if (RECENT_BOOKS.pruneMissing()) {
+            RECENT_BOOKS.saveToFile();
+          }
+          promptRebuildIndex();
+          return;
+        }
+        requestUpdate(true);
+      }
+  );
 }
 
 #if FREEINK_CAP_TOUCH
@@ -695,6 +730,10 @@ void LibraryListActivity::rebuildActionTrampoline(const fui::ActionEvent&, void*
   static_cast<LibraryListActivity*>(user)->promptRebuildIndex();
 }
 
+void LibraryListActivity::syncBooksActionTrampoline(const fui::ActionEvent&, void* user) {
+  static_cast<LibraryListActivity*>(user)->launchSyncBooks();
+}
+
 // Title and author for one entry, read straight from the index. Only ever
 // called for rows about to be drawn, so at most a screenful of strings exists
 // at once.
@@ -967,13 +1006,29 @@ void LibraryListActivity::buildHeader(UiScreen& screen) {
     // Vertical placement comes from applyHeaderStatus: buttons center on the
     // unified band.
   }
+  const bool syncButton = !degraded && mappedInput.hasTouch() && syncBooksAvailable();
   const auto frameRect = screen.frame().screen();
   // Header and tabs share a screen-relative boundary, independent of bezel insets.
   const fui::Rect band = BaseTheme::headerBand(renderer,
                                                fui::Rect{frameRect.x, static_cast<int16_t>(metrics.topPadding),
                                                          frameRect.width, static_cast<int16_t>(metrics.headerHeight)},
                                                header);
+  // fui::header holds two trailing buttons; Sync Books goes left of them with the same geometry.
+  const int16_t btn = header.trailingSize > 0 ? header.trailingSize : static_cast<int16_t>(band.height - 8);
+  if (syncButton) {
+    header.rightReserve = static_cast<int16_t>(btn + 4);
+  }
   fui::header(screen.frame(), band, header);
+  if (!syncButton) return;
+  fui::ButtonProps sync;
+  sync.icon = fui::bitmapFromIcon(icon_download_32);
+  sync.action = ACTION_SYNC_BOOKS;
+  sync.styles = header.trailingStyles;
+  sync.radius = header.trailingRadius;
+  sync.minTouchSize = header.minTouchSize;
+  const int16_t x = static_cast<int16_t>(band.right() - 12 - 3 * btn - 8);
+  const int16_t y = static_cast<int16_t>(band.y + 4 + header.actionOffsetY);
+  fui::button(screen.frame(), fui::Rect{x, y, btn, btn}, sync);
 }
 
 void LibraryListActivity::buildScreen(UiScreen& screen) {

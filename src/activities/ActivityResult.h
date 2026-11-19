@@ -80,9 +80,14 @@ struct FilePathResult {
   std::string path;
 };
 
+struct SyncBooksResult {
+  bool changed = false;
+};
+
 using ResultVariant =
     std::variant<std::monostate, WifiResult, KeyboardResult, MenuResult, ChapterResult, PercentResult, IntervalResult,
-                 PageResult, ClippingResult, ProgressChangeResult, NetworkModeResult, FootnoteResult, FilePathResult>;
+                 PageResult, ClippingResult, ProgressChangeResult, NetworkModeResult, FootnoteResult, FilePathResult,
+                 SyncBooksResult>;
 
 struct ActivityResult {
   bool isCancelled = false;
