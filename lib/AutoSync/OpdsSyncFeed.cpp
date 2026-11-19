@@ -46,7 +46,9 @@ OpdsSyncFeedParser::OpdsSyncFeedParser() {
 }
 
 OpdsSyncFeedParser::~OpdsSyncFeedParser() {
-  if (parser) XML_ParserFree(static_cast<XML_Parser>(parser));
+  if (parser) {
+    XML_ParserFree(static_cast<XML_Parser>(parser));
+  }
 }
 
 bool OpdsSyncFeedParser::feed(const char* data, size_t len) {
@@ -116,9 +118,15 @@ void OpdsSyncFeedParser::handleEnd(const char*) {
   if (depth < 3 || path[1] != "entry") return;
 
   if (depth == 3) {
-    if (local == "id") current.id = trim(text);
-    if (local == "title") current.title = trim(text);
-    if (local == "updated") current.updated = trim(text);
+    if (local == "id") {
+      current.id = trim(text);
+    }
+    if (local == "title") {
+      current.title = trim(text);
+    }
+    if (local == "updated") {
+      current.updated = trim(text);
+    }
     return;
   }
   if (depth == 4 && local == "name" && path[2] == "author") {
@@ -149,18 +157,28 @@ std::vector<SyncedBook> parseSyncState(const std::string& text) {
   size_t pos = 0;
   while (pos < text.size()) {
     size_t eol = text.find('\n', pos);
-    if (eol == std::string::npos) eol = text.size();
+    if (eol == std::string::npos) {
+      eol = text.size();
+    }
     std::string line = text.substr(pos, eol - pos);
     pos = eol + 1;
-    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (!line.empty() && line.back() == '\r') {
+      line.pop_back();
+    }
 
     const size_t t1 = line.find('\t');
-    if (t1 == std::string::npos) continue;
+    if (t1 == std::string::npos) {
+      continue;
+    }
     const size_t t2 = line.find('\t', t1 + 1);
-    if (t2 == std::string::npos) continue;
+    if (t2 == std::string::npos) {
+      continue;
+    }
 
     SyncedBook book{line.substr(0, t1), line.substr(t1 + 1, t2 - t1 - 1), line.substr(t2 + 1)};
-    if (book.id.empty() || book.path.empty()) continue;
+    if (book.id.empty() || book.path.empty()) {
+      continue;
+    }
     out.push_back(std::move(book));
   }
   return out;
