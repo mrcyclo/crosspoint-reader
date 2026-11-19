@@ -505,11 +505,15 @@ void KOReaderSyncActivity::onExit() {
     skipNextAutoOpen = true;
     KOReaderSyncClient::setRequestTimeout(0);
   }
-  if (wifiActivated) {
-    WiFi.disconnect(false);
-    delay(30);
-    silentRestartToReader();
+  if (!wifiActivated) return;
+
+  WiFi.disconnect(false);
+  delay(30);
+  if (isAuto()) {
+    silentRestartToReaderAfterAutoSync();
+    return;
   }
+  silentRestartToReader();
 }
 
 void KOReaderSyncActivity::chooseResultOption() {

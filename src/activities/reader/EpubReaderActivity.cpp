@@ -1290,17 +1290,19 @@ unsigned long EpubReaderActivity::confirmLongPressThreshold() const {
 bool EpubReaderActivity::startAutoOpenSync() {
   // Only the reader a silent restart reopens is skipped; later opens in this boot sync again.
   const bool silentBoot = bootWasSilentRestartToReader();
+  const bool returningFromAutoOpen = KOReaderSyncActivity::takeSkipNextAutoOpen();
+  const bool afterAutoOpenSync = returningFromAutoOpen || bootFollowedAutoOpenSync();
   clearBootWasSilentRestartToReader();
-  if (KOReaderSyncActivity::takeSkipNextAutoOpen()) return false;
+  // The flag only vouches for the AutoOpen pull that led straight into this reader. Any other open leaves it
+  // false, so the sleep push compares with the server first.
+  if (!afterAutoOpenSync) {
+    autosync::clearPulledThisSession(epub->getPath());
+  }
+  if (returningFromAutoOpen) return false;
 
   const autosync::OpenContext context{KOREADER_STORE.getAutoSync(), KOREADER_STORE.hasCredentials(), silentBoot, true};
   if (!autosync::shouldSyncOnOpen(context)) return false;
 
-  // A pull that fails must leave the flag false; a book without a marker keeps none until a sync succeeds.
-  if (auto marker = autosync::loadMarker(epub->getPath())) {
-    marker->pulledThisSession = false;
-    autosync::saveMarker(epub->getPath(), *marker);
-  }
   return launchKOReaderSync(KOReaderSyncActivity::Mode::AutoOpen);
 }
 

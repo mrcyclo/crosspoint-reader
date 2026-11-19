@@ -42,4 +42,12 @@ void saveMarker(const std::string& epubPath, const Marker& marker) {
           marker.percentage, marker.pulledThisSession ? 1 : 0);
 }
 
+void clearPulledThisSession(const std::string& epubPath) {
+  auto marker = loadMarker(epubPath);
+  if (!marker || !marker->pulledThisSession) return;
+
+  marker->pulledThisSession = false;
+  saveMarker(epubPath, *marker);
+}
+
 }  // namespace autosync

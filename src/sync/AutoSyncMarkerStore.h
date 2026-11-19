@@ -9,5 +9,6 @@ namespace autosync {
 
 std::optional<Marker> loadMarker(const std::string& epubPath);
 void saveMarker(const std::string& epubPath, const Marker& marker);
+void clearPulledThisSession(const std::string& epubPath);
 
 }  // namespace autosync
