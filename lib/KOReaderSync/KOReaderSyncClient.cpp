@@ -11,6 +11,7 @@
 #include "KOReaderCredentialStore.h"
 
 int KOReaderSyncClient::lastHttpCode = 0;
+uint32_t KOReaderSyncClient::requestTimeoutMs = 0;
 
 namespace {
 // Device identifier for CrossPoint reader
@@ -144,6 +145,9 @@ KOReaderSyncClient::Error KOReaderSyncClient::getProgress(const std::string& doc
 
   freeink::SecureHttpClient http;
   http.setInsecure();
+  if (requestTimeoutMs != 0) {
+    http.setTimeout(requestTimeoutMs);
+  }
   if (!http.begin(url)) {
     LOG_ERR("KOSync", "Bad URL: %s", url.c_str());
     return NETWORK_ERROR;
@@ -278,6 +282,9 @@ KOReaderSyncClient::Error KOReaderSyncClient::updateProgress(const KOReaderProgr
 
   freeink::SecureHttpClient http;
   http.setInsecure();
+  if (requestTimeoutMs != 0) {
+    http.setTimeout(requestTimeoutMs);
+  }
   if (!http.begin(url)) {
     LOG_ERR("KOSync", "Bad URL: %s", url.c_str());
     return NETWORK_ERROR;

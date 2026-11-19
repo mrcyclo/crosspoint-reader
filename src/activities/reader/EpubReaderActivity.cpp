@@ -1287,10 +1287,12 @@ unsigned long EpubReaderActivity::confirmLongPressThreshold() const {
 }
 
 bool EpubReaderActivity::startAutoOpenSync() {
+  // Only the first reader after a silent restart is skipped; later opens in this boot sync again.
+  const bool silentBoot = bootWasSilentRestart();
+  clearBootWasSilentRestart();
   if (KOReaderSyncActivity::takeSkipNextAutoOpen()) return false;
 
-  const autosync::OpenContext context{KOREADER_STORE.getAutoSync(), KOREADER_STORE.hasCredentials(),
-                                      bootWasSilentRestart(), true};
+  const autosync::OpenContext context{KOREADER_STORE.getAutoSync(), KOREADER_STORE.hasCredentials(), silentBoot, true};
   if (!autosync::shouldSyncOnOpen(context)) return false;
 
   // A pull that fails must leave the flag false; a book without a marker keeps none until a sync succeeds.

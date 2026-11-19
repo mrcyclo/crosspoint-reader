@@ -100,6 +100,9 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
   bool isAuto() const { return mode == Mode::AutoOpen; }
   void startAutoOpen();
   bool autoDeadlineExpired(const char* stage) const;
+  // Caps the next request's waits to the session time left; false when too little is left to try.
+  bool armAutoRequest(const char* stage) const;
+  static constexpr uint32_t MIN_REQUEST_BUDGET_MS = 500;
   void saveAutoMarker(int spineIndex, int pageNumber, float percentage) const;
 
   // The UiAppHost app hosts the interactive states (SHOWING_RESULT compare

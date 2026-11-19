@@ -131,6 +131,18 @@ bool KOReaderSyncActivity::autoDeadlineExpired(const char* stage) const {
   return true;
 }
 
+bool KOReaderSyncActivity::armAutoRequest(const char* stage) const {
+  if (!deadline) return true;
+  const uint32_t remaining = deadline->remaining(millis());
+  if (remaining < MIN_REQUEST_BUDGET_MS) {
+    LOG_INF("KOSync", "Auto sync time budget spent before %s (%u ms left)", stage, static_cast<unsigned>(remaining));
+    return false;
+  }
+  // The HTTP client applies the timeout to each wait in turn (connect, then response headers).
+  KOReaderSyncClient::setRequestTimeout(remaining / 2);
+  return true;
+}
+
 void KOReaderSyncActivity::saveAutoMarker(const int spineIndex, const int pageNumber, const float percentage) const {
   if (!isAuto()) return;
   autosync::Marker marker;
@@ -247,7 +259,7 @@ void KOReaderSyncActivity::performSync() {
   }
   requestUpdateAndWait();
 
-  if (autoDeadlineExpired("GET")) {
+  if (!armAutoRequest("GET")) {
     returnToReader();
     return;
   }
@@ -264,7 +276,7 @@ void KOReaderSyncActivity::performSync() {
   // In AutoOpen a primary request that failed (network, auth, server) would fail again; keep the time budget.
   const bool primaryAnswered = result == KOReaderSyncClient::OK || result == KOReaderSyncClient::NOT_FOUND;
   if (smartSyncEnabled() && (primaryAnswered || !isAuto())) {
-    if (autoDeadlineExpired("alternate GET")) {
+    if (!armAutoRequest("alternate GET")) {
       returnToReader();
       return;
     }
@@ -399,7 +411,7 @@ void KOReaderSyncActivity::performSync() {
 }
 
 void KOReaderSyncActivity::performUpload() {
-  if (autoDeadlineExpired("PUT")) {
+  if (!armAutoRequest("PUT")) {
     returnToReader();
     return;
   }
@@ -543,6 +555,7 @@ void KOReaderSyncActivity::onExit() {
 
   if (isAuto()) {
     skipNextAutoOpen = true;
+    KOReaderSyncClient::setRequestTimeout(0);
   }
   if (wifiActivated) {
     WiFi.disconnect(false);

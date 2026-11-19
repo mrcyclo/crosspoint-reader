@@ -152,6 +152,8 @@ static bool bootResumedSilently = false;
 
 bool bootWasSilentRestart() { return bootResumedSilently; }
 
+void clearBootWasSilentRestart() { bootResumedSilently = false; }
+
 // A silent restart is internal maintenance, so the light must come back exactly
 // as the user left it. SETTINGS.frontlightOn is the saved preference and
 // legitimately diverges from the live state (a wake with Restore Light on Wake

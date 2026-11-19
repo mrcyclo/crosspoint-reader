@@ -120,4 +120,12 @@ class KOReaderSyncClient {
 
   /** HTTP status code from the last request (for diagnostics). */
   static int lastHttpCode;
+
+  /**
+   * Per-wait timeout for the progress requests that follow; 0 restores the HTTP client default.
+   */
+  static void setRequestTimeout(uint32_t ms) { requestTimeoutMs = ms; }
+
+ private:
+  static uint32_t requestTimeoutMs;
 };
