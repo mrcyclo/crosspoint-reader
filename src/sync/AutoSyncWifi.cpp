@@ -4,7 +4,9 @@
 #include <WiFi.h>
 #include <esp_mac.h>
 
+#include <algorithm>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "WifiCredentialStore.h"
@@ -15,25 +17,74 @@ namespace {
 constexpr uint32_t POLL_INTERVAL_MS = 100;
 constexpr uint32_t PER_NETWORK_TIMEOUT_MS = 8000;
 constexpr uint32_t MIN_JOIN_BUDGET_MS = 200;
+constexpr uint32_t SCAN_TIMEOUT_MS = 6000;
 
-std::vector<WifiCredential> orderedCredentials() {
-  std::vector<WifiCredential> result;
-  const std::string lastSsid = WIFI_STORE.getLastConnectedSsid();
-  if (!lastSsid.empty()) {
-    const auto last = WIFI_STORE.findCredential(lastSsid);
-    if (last) {
-      result.push_back(*last);
+struct ScanResult {
+  bool completed = false;
+  bool sawHiddenNetwork = false;
+  std::vector<std::string> ssids;
+};
+
+ScanResult scanVisibleNetworks(const Deadline& deadline) {
+  ScanResult scan;
+  WiFi.persistent(false);
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  delay(POLL_INTERVAL_MS);
+
+  const uint32_t scanStart = millis();
+  WiFi.scanNetworks(true);
+  int16_t found = WiFi.scanComplete();
+  while (found == WIFI_SCAN_RUNNING) {
+    if (deadline.expired(millis()) || millis() - scanStart >= SCAN_TIMEOUT_MS) {
+      break;
     }
+    delay(POLL_INTERVAL_MS);
+    found = WiFi.scanComplete();
+  }
+
+  scan.completed = found >= 0;
+  for (int i = 0; i < found; i++) {
+    std::string ssid = WiFi.SSID(i).c_str();
+    if (ssid.empty()) {
+      scan.sawHiddenNetwork = true;
+      continue;
+    }
+    scan.ssids.push_back(std::move(ssid));
+  }
+  WiFi.scanDelete();
+  LOG_INF("AUTOSYNC", "Wi-Fi scan: %d networks in %u ms", static_cast<int>(found),
+          static_cast<unsigned>(millis() - scanStart));
+  return scan;
+}
+
+bool isVisible(const ScanResult& scan, const std::string& ssid) {
+  return std::find(scan.ssids.begin(), scan.ssids.end(), ssid) != scan.ssids.end();
+}
+
+// Saved networks the scan saw, last-connected first. When none is visible, the last-connected one is still
+// tried directly if it may be hidden: the scan failed, or it reported a network without a name.
+std::vector<WifiCredential> joinCandidates(const ScanResult& scan) {
+  std::vector<WifiCredential> candidates;
+  const std::string lastSsid = WIFI_STORE.getLastConnectedSsid();
+  const auto last = WIFI_STORE.findCredential(lastSsid);
+  if (last && isVisible(scan, last->ssid)) {
+    candidates.push_back(*last);
   }
   const size_t count = WIFI_STORE.getCredentialCount();
   for (size_t i = 0; i < count; i++) {
     const auto cred = WIFI_STORE.getCredentialAt(i);
-    if (!cred || cred->ssid == lastSsid) {
+    if (!cred || cred->ssid == lastSsid || !isVisible(scan, cred->ssid)) {
       continue;
     }
-    result.push_back(*cred);
+    candidates.push_back(*cred);
   }
-  return result;
+  if (!candidates.empty() || !last) return candidates;
+
+  if (!scan.completed || scan.sawHiddenNetwork) {
+    candidates.push_back(*last);
+  }
+  return candidates;
 }
 
 void startJoin(const WifiCredential& cred) {
@@ -67,10 +118,10 @@ bool connectSavedWifi(const Deadline& deadline) {
 
   // The store is otherwise loaded only when WifiSelectionActivity opens.
   WIFI_STORE.loadFromFile();
-  const auto credentials = orderedCredentials();
-  if (credentials.empty()) return false;
+  if (WIFI_STORE.getCredentialCount() == 0) return false;
 
-  for (const auto& cred : credentials) {
+  const auto candidates = joinCandidates(scanVisibleNetworks(deadline));
+  for (const auto& cred : candidates) {
     if (deadline.remaining(millis()) < MIN_JOIN_BUDGET_MS) {
       break;
     }
@@ -89,6 +140,9 @@ bool connectSavedWifi(const Deadline& deadline) {
     LOG_DBG("AUTOSYNC", "Saved network join failed: %s", cred.ssid.c_str());
   }
 
+  if (candidates.empty()) {
+    LOG_INF("AUTOSYNC", "No saved network in range");
+  }
   shutdownWifi();
   return false;
 }
