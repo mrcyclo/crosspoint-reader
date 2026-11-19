@@ -26,6 +26,8 @@
 #include "components/UiAppHelpers.h"  // list icons for the compare rows
 #include "fontIds.h"
 #include "network/WifiPowerSaveGuard.h"
+#include "sync/AutoSyncMarkerStore.h"
+#include "sync/AutoSyncWifi.h"
 
 namespace fui = freeink::ui;
 
@@ -52,15 +54,25 @@ const char* matchMethodName(const DocumentMatchMethod method) {
 
 KOReaderSyncActivity::KOReaderSyncActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                            const std::string& epubPath, CrossPointPosition localPosition,
-                                           SavedProgressPosition localKoPos, std::string localChapterName)
+                                           SavedProgressPosition localKoPos, std::string localChapterName,
+                                           const Mode mode)
     : Activity("KOReaderSync", renderer, mappedInput),
       UiAppHost(renderer),
+      mode(mode),
       epubPath(epubPath),
       localChapterName(std::move(localChapterName)),
       localPosition(localPosition),
       remoteProgress{},
       remotePosition{},
       localProgress(std::move(localKoPos)) {}
+
+bool KOReaderSyncActivity::skipNextAutoOpen = false;
+
+bool KOReaderSyncActivity::takeSkipNextAutoOpen() {
+  const bool skip = skipNextAutoOpen;
+  skipNextAutoOpen = false;
+  return skip;
+}
 
 void KOReaderSyncActivity::ensureEpubLoaded() {
   if (!epub) {
@@ -86,6 +98,11 @@ void KOReaderSyncActivity::saveProgressAndReturn(int spineIndex, int page) {
     offset = remotePosition.visibleTextOffset;
   }
   if (!EpubReaderUtils::saveProgress(*epub, spineIndex, page, 0, offset)) {
+    if (isAuto()) {
+      LOG_ERR("KOSync", "Auto sync could not save the remote position");
+      returnToReader();
+      return;
+    }
     {
       RenderLock lock(*this);
       state = SYNC_FAILED;
@@ -94,18 +111,64 @@ void KOReaderSyncActivity::saveProgressAndReturn(int spineIndex, int page) {
     requestUpdate(true);
     return;
   }
+  saveAutoMarker(spineIndex, page, remoteProgress.percentage);
   returnToReader();
 }
 
-void KOReaderSyncActivity::returnToReader() { activityManager.goToReader(epubPath); }
+void KOReaderSyncActivity::returnToReader() {
+  if (returnRequested) return;
+  returnRequested = true;
+  activityManager.goToReader(epubPath);
+}
 
 bool KOReaderSyncActivity::smartSyncEnabled() const {
-  return KOREADER_STORE.getSyncBehavior() == KOReaderSyncBehavior::SMART;
+  return isAuto() || KOREADER_STORE.getSyncBehavior() == KOReaderSyncBehavior::SMART;
+}
+
+bool KOReaderSyncActivity::autoDeadlineExpired(const char* stage) const {
+  if (!deadline || !deadline->expired(millis())) return false;
+  LOG_INF("KOSync", "Auto sync time budget spent before %s", stage);
+  return true;
+}
+
+void KOReaderSyncActivity::saveAutoMarker(const int spineIndex, const int pageNumber, const float percentage) const {
+  if (!isAuto()) return;
+  autosync::Marker marker;
+  marker.spineIndex = static_cast<uint16_t>(spineIndex);
+  marker.pageNumber = static_cast<uint16_t>(pageNumber);
+  marker.percentage = percentage;
+  marker.pulledThisSession = true;
+  autosync::saveMarker(epubPath, marker);
+}
+
+void KOReaderSyncActivity::startAutoOpen() {
+  deadline.emplace(millis(), autosync::SESSION_BUDGET_MS);
+  {
+    RenderLock lock(*this);
+    state = CONNECTING;
+  }
+  requestUpdateAndWait();
+
+  bool connected = false;
+  {
+    // connectSavedWifi() writes the last-connected SSID to SD; keep the render task off the bus meanwhile.
+    RenderLock lock(*this);
+    connected = autosync::connectSavedWifi(*deadline);
+  }
+  if (!connected) {
+    LOG_INF("KOSync", "Auto sync: no saved network joined, back to reader");
+    returnToReader();
+    return;
+  }
+
+  wifiActivated = true;
+  onWifiSelectionComplete(true);
 }
 
 void KOReaderSyncActivity::markAutoReturn() { autoReturnAt = millis() + AUTO_RETURN_DELAY_MS; }
 
 void KOReaderSyncActivity::completeAlreadySynced() {
+  saveAutoMarker(localPosition.spineIndex, localPosition.pageNumber, localProgress.percentage);
   {
     RenderLock lock(*this);
     state = SYNC_COMPLETE;
@@ -142,6 +205,10 @@ void KOReaderSyncActivity::onWifiSelectionComplete(const bool success) {
 
 void KOReaderSyncActivity::performSync() {
   WifiPowerSaveGuard psGuard;
+  if (autoDeadlineExpired("hash")) {
+    returnToReader();
+    return;
+  }
   const DocumentMatchMethod primaryMethod = KOREADER_STORE.getMatchMethod();
   documentHash = calculateDocumentHashForMethod(epubPath, primaryMethod);
   if (documentHash.empty()) {
@@ -157,7 +224,7 @@ void KOReaderSyncActivity::performSync() {
 
   LOG_DBG("KOSync", "Document hash (%s): %s", matchMethodName(primaryMethod), documentHash.c_str());
 
-  if (KOREADER_STORE.getSyncClippings()) {
+  if (!isAuto() && KOREADER_STORE.getSyncClippings()) {
     {
       RenderLock lock(*this);
       statusMessage = tr(STR_SYNCING_CLIPPINGS);
@@ -180,6 +247,11 @@ void KOReaderSyncActivity::performSync() {
   }
   requestUpdateAndWait();
 
+  if (autoDeadlineExpired("GET")) {
+    returnToReader();
+    return;
+  }
+
   // Fetch remote progress. In smart mode, retain the alternate document-id
   // record until both records can be mapped after the Epub is reloaded.
   auto result = KOReaderSyncClient::getProgress(documentHash, remoteProgress);
@@ -189,7 +261,13 @@ void KOReaderSyncActivity::performSync() {
 
   KOReaderProgress alternateProgress;
   bool hasAlternateProgress = false;
-  if (smartSyncEnabled()) {
+  // In AutoOpen a primary request that failed (network, auth, server) would fail again; keep the time budget.
+  const bool primaryAnswered = result == KOReaderSyncClient::OK || result == KOReaderSyncClient::NOT_FOUND;
+  if (smartSyncEnabled() && (primaryAnswered || !isAuto())) {
+    if (autoDeadlineExpired("alternate GET")) {
+      returnToReader();
+      return;
+    }
     const DocumentMatchMethod altMethod = alternateMatchMethod(primaryMethod);
     const std::string altHash = calculateDocumentHashForMethod(epubPath, altMethod);
     if (!altHash.empty() && altHash != documentHash) {
@@ -321,6 +399,10 @@ void KOReaderSyncActivity::performSync() {
 }
 
 void KOReaderSyncActivity::performUpload() {
+  if (autoDeadlineExpired("PUT")) {
+    returnToReader();
+    return;
+  }
   {
     RenderLock lock(*this);
     state = UPLOADING;
@@ -411,6 +493,7 @@ void KOReaderSyncActivity::performUpload() {
     return;
   }
 
+  saveAutoMarker(localPosition.spineIndex, localPosition.pageNumber, localProgress.percentage);
   {
     RenderLock lock(*this);
     state = UPLOAD_COMPLETE;
@@ -434,6 +517,11 @@ void KOReaderSyncActivity::onEnter() {
     return;
   }
 
+  if (isAuto()) {
+    startAutoOpen();
+    return;
+  }
+
   // Past this point every path uses WiFi.
   wifiActivated = true;
 
@@ -453,6 +541,9 @@ void KOReaderSyncActivity::onEnter() {
 void KOReaderSyncActivity::onExit() {
   Activity::onExit();
 
+  if (isAuto()) {
+    skipNextAutoOpen = true;
+  }
   if (wifiActivated) {
     WiFi.disconnect(false);
     delay(30);
@@ -637,15 +728,24 @@ void KOReaderSyncActivity::buildResultScreen(UiScreen& screen) {
 }
 
 void KOReaderSyncActivity::render(RenderLock&&) {
-  renderer.clearScreen();
-
   auto metrics = UITheme::getInstance().getMetrics();
   Rect screen = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+  int top = screen.y + screen.height / 2 - 40;
 
+  if (isAuto()) {
+    // One paint for the whole session: repainting the same line would only add e-ink refreshes.
+    if (autoStatusDrawn) return;
+    autoStatusDrawn = true;
+    renderer.clearScreen();
+    UITheme::drawCenteredText(renderer, screen, UI_10_FONT_ID, top, tr(STR_AUTO_SYNCING), true, EpdFontFamily::BOLD);
+    renderer.displayBuffer();
+    return;
+  }
+
+  renderer.clearScreen();
   GUI.drawHeader(renderer, Rect{screen.x, screen.y + metrics.topPadding, screen.width, metrics.headerHeight},
                  state == SHOWING_RESULT ? tr(STR_PROGRESS_FOUND) : tr(STR_KOREADER_SYNC));
 
-  int top = screen.y + screen.height / 2 - 40;
   if (state == NO_CREDENTIALS) {
     UITheme::drawCenteredText(renderer, screen, UI_10_FONT_ID, top, tr(STR_NO_CREDENTIALS_MSG), true,
                               EpdFontFamily::BOLD);
@@ -708,6 +808,13 @@ void KOReaderSyncActivity::render(RenderLock&&) {
 }
 
 void KOReaderSyncActivity::loop() {
+  if (isAuto()) {
+    // Every AutoOpen path finishes inside onEnter(); whatever state is left here ends the session.
+    LOG_INF("KOSync", "Auto sync done: state=%d %s", static_cast<int>(state), statusMessage.c_str());
+    returnToReader();
+    return;
+  }
+
   if (state == NO_CREDENTIALS || state == SYNC_FAILED || state == UPLOAD_COMPLETE || state == SYNC_COMPLETE) {
     if (autoReturnAt != 0 && millis() >= autoReturnAt) {
       returnToReader();

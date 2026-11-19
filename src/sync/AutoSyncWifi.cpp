@@ -14,6 +14,7 @@ namespace {
 
 constexpr uint32_t POLL_INTERVAL_MS = 100;
 constexpr uint32_t PER_NETWORK_TIMEOUT_MS = 8000;
+constexpr uint32_t MIN_JOIN_BUDGET_MS = 200;
 
 std::vector<WifiCredential> orderedCredentials() {
   std::vector<WifiCredential> result;
@@ -27,7 +28,9 @@ std::vector<WifiCredential> orderedCredentials() {
   const size_t count = WIFI_STORE.getCredentialCount();
   for (size_t i = 0; i < count; i++) {
     const auto cred = WIFI_STORE.getCredentialAt(i);
-    if (!cred || cred->ssid == lastSsid) continue;
+    if (!cred || cred->ssid == lastSsid) {
+      continue;
+    }
     result.push_back(*cred);
   }
   return result;
@@ -62,11 +65,15 @@ void startJoin(const WifiCredential& cred) {
 bool connectSavedWifi(const Deadline& deadline) {
   if (WiFi.status() == WL_CONNECTED) return true;
 
+  // The store is otherwise loaded only when WifiSelectionActivity opens.
+  WIFI_STORE.loadFromFile();
   const auto credentials = orderedCredentials();
   if (credentials.empty()) return false;
 
   for (const auto& cred : credentials) {
-    if (deadline.expired(millis())) break;
+    if (deadline.remaining(millis()) < MIN_JOIN_BUDGET_MS) {
+      break;
+    }
 
     startJoin(cred);
     const uint32_t attemptStart = millis();

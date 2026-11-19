@@ -55,6 +55,7 @@
 #include "clippings/ClippingsManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "sync/AutoSyncMarkerStore.h"
 #include "util/BookmarkUtil.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
@@ -600,6 +601,11 @@ void EpubReaderActivity::loop() {
   }
 
   rememberBookOnceRendered();
+
+  if (bookRemembered && !autoOpenSyncChecked) {
+    autoOpenSyncChecked = true;
+    if (startAutoOpenSync()) return;
+  }
 
   // The radio stopped for a chapter build: once the render task has let go of the lock, that page
   // is on screen; once the look-ahead below has finished the chapter, no parser is left alive and
@@ -1280,7 +1286,22 @@ unsigned long EpubReaderActivity::confirmLongPressThreshold() const {
   }
 }
 
-bool EpubReaderActivity::launchKOReaderSync() {
+bool EpubReaderActivity::startAutoOpenSync() {
+  if (KOReaderSyncActivity::takeSkipNextAutoOpen()) return false;
+
+  const autosync::OpenContext context{KOREADER_STORE.getAutoSync(), KOREADER_STORE.hasCredentials(),
+                                      bootWasSilentRestart(), true};
+  if (!autosync::shouldSyncOnOpen(context)) return false;
+
+  // A pull that fails must leave the flag false; a book without a marker keeps none until a sync succeeds.
+  if (auto marker = autosync::loadMarker(epub->getPath())) {
+    marker->pulledThisSession = false;
+    autosync::saveMarker(epub->getPath(), *marker);
+  }
+  return launchKOReaderSync(KOReaderSyncActivity::Mode::AutoOpen);
+}
+
+bool EpubReaderActivity::launchKOReaderSync(const KOReaderSyncActivity::Mode mode) {
   if (!KOREADER_STORE.hasCredentials()) return false;
 
   RenderLock renderLock;
@@ -1325,7 +1346,14 @@ bool EpubReaderActivity::launchKOReaderSync() {
   LOG_DBG("KOSync", "Epub released (heap after: %u)", (unsigned)ESP.getFreeHeap());
 
   activityManager.replaceActivity(std::make_unique<KOReaderSyncActivity>(
-      renderer, mappedInput, savedEpubPath, localPos, std::move(localKoPos), std::move(localChapterName)));
+      renderer,
+      mappedInput,
+      savedEpubPath,
+      localPos,
+      std::move(localKoPos),
+      std::move(localChapterName),
+      mode
+  ));
   return true;
 }
 

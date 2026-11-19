@@ -148,6 +148,10 @@ enum class BootResume : uint8_t {
 // startDeepSleep() does not return, so a set latch only ends at the wakeup reset.
 static bool deepSleepInProgress = false;
 
+static bool bootResumedSilently = false;
+
+bool bootWasSilentRestart() { return bootResumedSilently; }
+
 // A silent restart is internal maintenance, so the light must come back exactly
 // as the user left it. SETTINGS.frontlightOn is the saved preference and
 // legitimately diverges from the live state (a wake with Restore Light on Wake
@@ -746,6 +750,7 @@ void setup() {
 
   switch (resume) {
     case BootResume::Silent:
+      bootResumedSilently = true;
       // Splash skipped: the routing block below picks the target activity; the
       // panel keeps showing the pre-reboot popup until that first paint lands.
       break;

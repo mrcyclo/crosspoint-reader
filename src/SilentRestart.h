@@ -19,3 +19,6 @@ void silentRestartToJoinNetwork();
 // Reboots immediately after an activity releases exclusive raw storage. The
 // RTC target ensures setup() lands on Home instead of resuming a reader.
 void restartToHomeAfterStorageHandoff();
+
+// True for the whole boot when setup() resumed from one of the restarts above.
+bool bootWasSilentRestart();

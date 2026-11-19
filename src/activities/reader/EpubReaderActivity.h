@@ -14,6 +14,7 @@
 #include "ChapterPosition.h"
 #include "ClipSelectionActivity.h"
 #include "EpubReaderMenuActivity.h"
+#include "KOReaderSyncActivity.h"
 #include "LinkNoteTitle.h"
 #include "ProgressMapper.h"
 #include "ReaderActivity.h"
@@ -193,7 +194,10 @@ class EpubReaderActivity final : public ReaderActivity {
   int clippingAtPoint(const Page& page, int x, int y) const;
   void openClippings();
   void applyProgressChange(const ProgressChangeResult& progress);
-  bool launchKOReaderSync();
+  bool launchKOReaderSync(KOReaderSyncActivity::Mode mode = KOReaderSyncActivity::Mode::Manual);
+  // Once per reader, after the first page is on screen.
+  bool startAutoOpenSync();
+  bool autoOpenSyncChecked = false;
   unsigned long confirmLongPressThreshold() const;
   void toggleAutoPageTurn(uint8_t selectedPageTurnOption);
   void loadCachedBookmarks();

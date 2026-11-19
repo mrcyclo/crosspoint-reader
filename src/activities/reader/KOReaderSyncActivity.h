@@ -1,4 +1,5 @@
 #pragma once
+#include <AutoSyncCore.h>
 #include <Epub.h>
 
 #include <functional>
@@ -22,9 +23,15 @@
  */
 class KOReaderSyncActivity final : public Activity, private UiAppHost {
  public:
+  // AutoOpen: no prompts, saved networks only, bounded by autosync::SESSION_BUDGET_MS.
+  enum class Mode { Manual, AutoOpen };
+
   explicit KOReaderSyncActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& epubPath,
                                 CrossPointPosition localPosition, SavedProgressPosition localKoPos,
-                                std::string localChapterName);
+                                std::string localChapterName, Mode mode = Mode::Manual);
+
+  // True once after an AutoOpen session ends, so the reader it reopens does not sync again.
+  static bool takeSkipNextAutoOpen();
 
   void onEnter() override;
   void onExit() override;
@@ -47,6 +54,11 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
   };
 
   std::shared_ptr<Epub> epub;  // null until lazy-loaded after TLS in performSync()
+  Mode mode;
+  std::optional<autosync::Deadline> deadline;
+  bool autoStatusDrawn = false;
+  bool returnRequested = false;
+  static bool skipNextAutoOpen;
   std::string epubPath;
   std::string localChapterName;
   CrossPointPosition localPosition;
@@ -85,6 +97,10 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
   void ensureEpubLoaded();
   void saveProgressAndReturn(int spineIndex, int page);
   void returnToReader();
+  bool isAuto() const { return mode == Mode::AutoOpen; }
+  void startAutoOpen();
+  bool autoDeadlineExpired(const char* stage) const;
+  void saveAutoMarker(int spineIndex, int pageNumber, float percentage) const;
 
   // The UiAppHost app hosts the interactive states (SHOWING_RESULT compare
   // rows and the NO_REMOTE_PROGRESS upload prompt) so they get themed
