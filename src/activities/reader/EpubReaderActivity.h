@@ -197,6 +197,7 @@ class EpubReaderActivity final : public ReaderActivity {
   bool launchKOReaderSync(KOReaderSyncActivity::Mode mode = KOReaderSyncActivity::Mode::Manual);
   // Once per reader, after the first page is on screen.
   bool startAutoOpenSync();
+  void syncProgressBeforeSleep();
   bool autoOpenSyncChecked = false;
   unsigned long confirmLongPressThreshold() const;
   void toggleAutoPageTurn(uint8_t selectedPageTurnOption);
@@ -247,6 +248,7 @@ class EpubReaderActivity final : public ReaderActivity {
 
   void loop() override;
   void render(RenderLock&& lock) override;
+  void prepareForSleep() override;
 
   bool pageTurn(bool isForward) override;
   bool skipPages(int amount) override;

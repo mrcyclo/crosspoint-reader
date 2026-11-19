@@ -56,6 +56,7 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "sync/AutoSyncMarkerStore.h"
+#include "sync/SleepSync.h"
 #include "util/BookmarkUtil.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
@@ -1301,6 +1302,44 @@ bool EpubReaderActivity::startAutoOpenSync() {
     autosync::saveMarker(epub->getPath(), *marker);
   }
   return launchKOReaderSync(KOReaderSyncActivity::Mode::AutoOpen);
+}
+
+void EpubReaderActivity::prepareForSleep() {
+  ReaderActivity::prepareForSleep();
+  syncProgressBeforeSleep();
+}
+
+// ActivityManager::prepareForSleep holds the RenderLock for this whole call.
+void EpubReaderActivity::syncProgressBeforeSleep() {
+  const bool inEpubReader = epub
+      && section
+      && !isAtEndOfBook()
+      && activityManager.isForegroundReader();
+  if (!autosync::shouldSyncOnSleep(KOREADER_STORE.getAutoSync(), KOREADER_STORE.hasCredentials(), inEpubReader)) return;
+
+  if (!saveProgress(currentSpineIndex, section->currentPage, section->estimatedTotalPages())) {
+    LOG_ERR("KOSync", "Sleep sync skipped because current progress could not be saved");
+    return;
+  }
+
+  const CrossPointPosition localPos = getCurrentPosition();
+  const auto marker = autosync::loadMarker(epub->getPath());
+  if (autosync::decideSleepPush(marker, localPos.spineIndex, localPos.pageNumber) == autosync::SleepPush::Skip) {
+    return;
+  }
+
+  // The panel keeps showing the popup while the mapper borrows the framebuffer.
+  GUI.drawPopup(renderer, tr(STR_AUTO_SYNCING));
+  SavedProgressPosition localKoPos;
+  {
+    GfxRenderer::FrameBufferLoan loan(renderer);
+    localKoPos = ProgressMapper::toSavedProgress(epub, localPos);
+  }
+
+  syncBeforeSleep(epub->getPath(), localPos, localKoPos);
+
+  // The loan returned a blank buffer; Quick Resume saves whatever this paints.
+  renderBook();
 }
 
 bool EpubReaderActivity::launchKOReaderSync(const KOReaderSyncActivity::Mode mode) {

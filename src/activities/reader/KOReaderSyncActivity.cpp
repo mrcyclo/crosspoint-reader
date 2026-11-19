@@ -1,7 +1,6 @@
 #include "KOReaderSyncActivity.h"
 
 #include <GfxRenderer.h>
-#include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
 #include <TrustedTime.h>
@@ -28,6 +27,7 @@
 #include "network/WifiPowerSaveGuard.h"
 #include "sync/AutoSyncMarkerStore.h"
 #include "sync/AutoSyncWifi.h"
+#include "sync/KOReaderUpload.h"
 
 namespace fui = freeink::ui;
 
@@ -423,63 +423,11 @@ void KOReaderSyncActivity::performUpload() {
   requestUpdateAndWait();
 
   // localProgress was pre-computed in EpubReaderActivity before the Epub was released.
-  KOReaderProgress progress;
-  progress.document = documentHash;
-  progress.progress = localProgress.xpath;
-  progress.percentage = localProgress.percentage;
-
-  // Rich position for server profiles that explicitly support the CrossPoint extension.
-  // The HTTP client enforces the same boundary before serializing the extension.
-  if (KOREADER_STORE.supportsRichProgress()) {
-    KOReaderRichPosition pos;
-    const float pct = localProgress.percentage < 0.0f   ? 0.0f
-                      : localProgress.percentage > 1.0f ? 1.0f
-                                                        : localProgress.percentage;
-    pos.pctQ = static_cast<uint32_t>(pct * 1000000.0f + 0.5f);
-    pos.spineIndex = static_cast<uint16_t>(localPosition.spineIndex);
-    pos.pageNumber = static_cast<uint16_t>(localPosition.pageNumber);
-    pos.totalPages = static_cast<uint16_t>(localPosition.totalPages > 0 ? localPosition.totalPages : 1);
-    if (localPosition.hasParagraphIndex) {
-      pos.paragraphIndex = localPosition.paragraphIndex;
-    }
-    pos.xpath = localProgress.xpath;
-    progress.position = std::move(pos);
-  }
-
-  // Optionally include document metadata (KOReader PR #15306)
+  // From NO_REMOTE_PROGRESS the Epub is still null, so reload it for the metadata.
   if (KOREADER_STORE.getSendMetadata()) {
-    // The Epub is released before the sync network calls and is only reloaded on the
-    // remote-progress path (performSync). When uploading from NO_REMOTE_PROGRESS the
-    // Epub is still null, so reload it here and guard the title/author reads to avoid
-    // dereferencing a null Epub. Filename is derived from the path and is always safe.
     ensureEpubLoaded();
-    KOReaderMetadata meta;
-    const auto lastSlash = epubPath.rfind('/');
-    meta.filename = (lastSlash != std::string::npos) ? epubPath.substr(lastSlash + 1) : epubPath;
-    if (epub) {
-      meta.title = epub->getTitle();
-      meta.authors = epub->getAuthor();
-      if (KOREADER_STORE.supportsExtendedMetadata()) {
-        Epub::SyncMetadata syncMetadata;
-        if (epub->loadSyncMetadata(syncMetadata)) {
-          meta.isbn = std::move(syncMetadata.isbn);
-          meta.asin = std::move(syncMetadata.asin);
-          meta.series = std::move(syncMetadata.series);
-          meta.seriesIndex = syncMetadata.seriesIndex;
-        } else {
-          LOG_DBG("KOSync", "Could not read extended EPUB metadata; sending core metadata only");
-        }
-      }
-    } else {
-      LOG_ERR("KOSync", "Epub unavailable for metadata; sending filename only");
-    }
-    // Plugin sidecar fields ("<book>.meta.json", written at download time via
-    // the catalog sidecar mechanism or /api/plugin-fs) ride along so a custom
-    // sync server can route progress by a service book id.
-    // A missing sidecar (the common case) leaves extraJson empty.
-    Storage.readFileToString("KOSync", epubPath + ".meta.json", 2 * 1024, meta.extraJson);
-    progress.metadata = std::move(meta);
   }
+  const KOReaderProgress progress = buildKOReaderUpload(epubPath, documentHash, localProgress, localPosition, epub);
 
   // Release the Epub before the network call so the TLS handshake has enough free heap
   // (consistent with the release-before-sync pattern in performSync); nothing below needs it.
