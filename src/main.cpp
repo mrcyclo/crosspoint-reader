@@ -46,6 +46,7 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "platform/UsbSerialJtagHandoff.h"
+#include "sync/SleepSync.h"
 #include "util/ButtonNavigator.h"
 #include "util/PluginEvents.h"
 #include "util/ScreenshotUtil.h"
@@ -390,6 +391,8 @@ static bool loadSleepFrameBuffer() {
 // drain (at-least-once). The caller's WiFi shutdown tears the radio down
 // either way. Deferrable events already queued (reader.exit) ride along in
 // the same drain.
+constexpr uint16_t SLEEP_NETWORK_MIN_BATTERY_PERCENT = 20;
+
 static void deliverSleepPluginEvents(const bool allowNetwork) {
   // Activity-owned state must be queued before sleep.enter and before this
   // same-sleep drain. The hook is idempotent with ordinary activity teardown.
@@ -418,7 +421,7 @@ static void deliverSleepPluginEvents(const bool allowNetwork) {
   // sleep.enter: reader.session is queued while reading and delivered on this
   // same sleep, and a progress-sync plugin usually subscribes to it alone.
   if (!pluginevents::wantsConnectAny()) return;
-  if (powerManager.getBatteryPercentage() < 20) return;
+  if (powerManager.getBatteryPercentage() < SLEEP_NETWORK_MIN_BATTERY_PERCENT) return;
   const auto cred = WIFI_STORE.findCredential(WIFI_STORE.getLastConnectedSsid());
   if (!cred) return;
 
@@ -486,6 +489,9 @@ void enterDeepSleep(bool fromTimeout = false) {
   deepSleepInProgress = true;
   const bool bluetoothStopped = bleturner::beforeSleep(2000);
   if (!bluetoothStopped) LOG_ERR("SLP", "Bluetooth did not stop; deferring sleep-event delivery");
+  // Read by the reader's sleep progress push inside deliverSleepPluginEvents().
+  const bool batteryAllowsNetwork = powerManager.getBatteryPercentage() >= SLEEP_NETWORK_MIN_BATTERY_PERCENT;
+  setSleepSyncNetworkAllowed(bluetoothStopped && batteryAllowsNetwork);
   deliverSleepPluginEvents(bluetoothStopped);
 
   const bool isQuickResumeSleep =

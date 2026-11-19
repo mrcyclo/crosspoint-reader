@@ -198,6 +198,7 @@ class EpubReaderActivity final : public ReaderActivity {
   // Once per reader, after the first page is on screen.
   bool startAutoOpenSync();
   void syncProgressBeforeSleep();
+  CrossPointPosition endOfBookPosition() const;
   bool autoOpenSyncChecked = false;
   unsigned long confirmLongPressThreshold() const;
   void toggleAutoPageTurn(uint8_t selectedPageTurnOption);

@@ -100,7 +100,13 @@ void runSession(const Deadline& deadline, const std::string& epubPath, const Cro
   autosync::saveMarker(epubPath, synced);
 }
 
+bool networkAllowed = false;
+
 }  // namespace
+
+void setSleepSyncNetworkAllowed(const bool allowed) { networkAllowed = allowed; }
+
+bool sleepSyncNetworkAllowed() { return networkAllowed; }
 
 void syncBeforeSleep(const std::string& epubPath, const CrossPointPosition& pos, const SavedProgressPosition& koPos) {
   const auto marker = autosync::loadMarker(epubPath);

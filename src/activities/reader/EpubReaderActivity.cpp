@@ -15,6 +15,7 @@
 #include <Memory.h>
 #include <TrustedTime.h>
 #include <WiFi.h>
+#include <esp_heap_caps.h>
 #include <esp_system.h>
 
 #include <algorithm>
@@ -22,6 +23,7 @@
 #include <functional>
 #include <iterator>
 #include <limits>
+#include <memory>
 
 #include "../../util/BookmarkFile.h"
 #include "BookmarkEntry.h"
@@ -1306,28 +1308,77 @@ bool EpubReaderActivity::startAutoOpenSync() {
   return launchKOReaderSync(KOReaderSyncActivity::Mode::AutoOpen);
 }
 
+namespace {
+
+struct HeapCapsDeleter {
+  void operator()(uint8_t* bytes) const { heap_caps_free(bytes); }
+};
+using FrameCopy = std::unique_ptr<uint8_t, HeapCapsDeleter>;
+
+FrameCopy copyFrame(const GfxRenderer& renderer) {
+  FrameCopy copy(static_cast<uint8_t*>(heap_caps_malloc(renderer.getBufferSize(), MALLOC_CAP_SPIRAM)));
+  if (copy) {
+    memcpy(copy.get(), renderer.getFrameBuffer(), renderer.getBufferSize());
+  }
+  return copy;
+}
+
+}  // namespace
+
 void EpubReaderActivity::prepareForSleep() {
   ReaderActivity::prepareForSleep();
   syncProgressBeforeSleep();
 }
 
-// ActivityManager::prepareForSleep holds the RenderLock for this whole call.
-void EpubReaderActivity::syncProgressBeforeSleep() {
-  const bool inEpubReader = epub
-      && section
-      && !isAtEndOfBook()
-      && activityManager.isForegroundReader();
-  if (!autosync::shouldSyncOnSleep(KOREADER_STORE.getAutoSync(), KOREADER_STORE.hasCredentials(), inEpubReader)) return;
+CrossPointPosition EpubReaderActivity::endOfBookPosition() const {
+  // Without the last chapter's layout, page 1 of 2 still maps to the end of that chapter.
+  CrossPointPosition pos{epub->getSpineItemsCount() - 1, 1, 2};
+  pos.hasResolvedSpineIndex = true;
+  pos.hasMappedPage = true;
+  // Paging off the last page keeps the last chapter loaded.
+  if (!section || section->pageCount == 0) return pos;
 
-  if (!saveProgress(currentSpineIndex, section->currentPage, section->estimatedTotalPages())) {
+  pos.totalPages = section->pageCount;
+  pos.pageNumber = section->pageCount - 1;
+  if (const auto offset = section->getVisibleTextOffsetForPage(static_cast<uint16_t>(pos.pageNumber))) {
+    pos.visibleTextOffset = *offset;
+    pos.hasVisibleTextOffset = true;
+  }
+  return pos;
+}
+
+// ActivityManager::prepareForSleep holds the RenderLock for this whole call. It also runs while a reader
+// sub-activity is on top, with this reader on the activity stack.
+void EpubReaderActivity::syncProgressBeforeSleep() {
+  const bool atEndOfBook = epub && epub->getSpineItemsCount() > 0 && isAtEndOfBook();
+  const bool inEpubReader = epub && (section || atEndOfBook);
+  if (!autosync::shouldSyncOnSleep(KOREADER_STORE.getAutoSync(), KOREADER_STORE.hasCredentials(), inEpubReader)) return;
+  if (!sleepSyncNetworkAllowed()) {
+    LOG_INF("AUTOSYNC", "Sleep sync skipped: Bluetooth did not stop or the battery is low");
+    return;
+  }
+
+  if (!atEndOfBook && !saveProgress(currentSpineIndex, section->currentPage, section->estimatedTotalPages())) {
     LOG_ERR("KOSync", "Sleep sync skipped because current progress could not be saved");
     return;
   }
 
-  const CrossPointPosition localPos = getCurrentPosition();
+  const CrossPointPosition localPos = atEndOfBook ? endOfBookPosition() : getCurrentPosition();
   const auto marker = autosync::loadMarker(epub->getPath());
   if (autosync::decideSleepPush(marker, localPos.spineIndex, localPos.pageNumber) == autosync::SleepPush::Skip) {
     return;
+  }
+
+  // Only the page can be redrawn. Any other screen (end of book, a sub-activity) is copied and put back,
+  // so Quick Resume keeps what the user saw.
+  const bool repaintPage = !atEndOfBook && activityManager.isForegroundReader();
+  FrameCopy screen;
+  if (!repaintPage) {
+    screen = copyFrame(renderer);
+    if (!screen) {
+      LOG_ERR("AUTOSYNC", "Sleep sync skipped: no memory to keep the screen");
+      return;
+    }
   }
 
   // The panel keeps showing the popup while the mapper borrows the framebuffer.
@@ -1337,11 +1388,19 @@ void EpubReaderActivity::syncProgressBeforeSleep() {
     GfxRenderer::FrameBufferLoan loan(renderer);
     localKoPos = ProgressMapper::toSavedProgress(epub, localPos);
   }
+  if (atEndOfBook) {
+    localKoPos.percentage = 1.0f;
+  }
 
   syncBeforeSleep(epub->getPath(), localPos, localKoPos);
 
-  // The loan returned a blank buffer; Quick Resume saves whatever this paints.
-  renderBook();
+  // The loan returned a blank buffer; Quick Resume saves whatever is drawn here.
+  if (repaintPage) {
+    renderBook();
+    return;
+  }
+  memcpy(renderer.getFrameBuffer(), screen.get(), renderer.getBufferSize());
+  renderer.displayBuffer();
 }
 
 bool EpubReaderActivity::launchKOReaderSync(const KOReaderSyncActivity::Mode mode) {
