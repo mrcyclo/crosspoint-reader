@@ -48,6 +48,7 @@ class KOReaderCredentialStore : public PersistableStore<KOReaderCredentialStore>
   bool syncClippings = false;                                       // Opt-in crosspoint-sync extension
   KOReaderSyncBehavior syncBehavior = KOReaderSyncBehavior::SMART;
   KOReaderServerType serverType = KOReaderServerType::CROSSPOINT;
+  bool autoSync = false;
 
   // Fixed-size to avoid vector growth on the settings edit path; an empty
   // name marks an unused slot.
@@ -107,6 +108,9 @@ class KOReaderCredentialStore : public PersistableStore<KOReaderCredentialStore>
   // Sync behavior
   void setSyncBehavior(KOReaderSyncBehavior behavior);
   KOReaderSyncBehavior getSyncBehavior() const { return syncBehavior; }
+
+  void setAutoSync(bool enabled) { autoSync = enabled; }
+  bool getAutoSync() const { return autoSync; }
 
   // Custom headers sent with every sync request (index must be < MAX_CUSTOM_HEADERS)
   void setCustomHeader(size_t index, const std::string& name, const std::string& value);
