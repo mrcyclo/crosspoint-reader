@@ -54,7 +54,10 @@ SleepPush decideSleepPush(const std::optional<Marker>& marker, uint16_t spineInd
 }
 
 bool shouldSyncOnOpen(const OpenContext& ctx) {
-  return ctx.autoSyncEnabled && ctx.hasCredentials && !ctx.silentBoot && ctx.isEpub;
+  return ctx.autoSyncEnabled
+      && ctx.hasCredentials
+      && !ctx.silentBoot
+      && ctx.isEpub;
 }
 
 bool shouldSyncOnSleep(bool autoSyncEnabled, bool hasCredentials, bool inEpubReader) {

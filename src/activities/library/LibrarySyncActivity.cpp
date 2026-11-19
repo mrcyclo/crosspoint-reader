@@ -35,7 +35,10 @@ bool isEpubFile(const std::string& path) {
   if (!Storage.openFileForRead("SYNC", path.c_str(), file)) return false;
   file.read(magic, sizeof(magic));
   file.close();
-  return magic[0] == 'P' && magic[1] == 'K' && magic[2] == 3 && magic[3] == 4;
+  return magic[0] == 'P'
+      && magic[1] == 'K'
+      && magic[2] == 3
+      && magic[3] == 4;
 }
 
 }  // namespace
