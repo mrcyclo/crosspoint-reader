@@ -20,6 +20,6 @@ void silentRestartToJoinNetwork();
 // RTC target ensures setup() lands on Home instead of resuming a reader.
 void restartToHomeAfterStorageHandoff();
 
-// True when setup() resumed from one of the restarts above, until clearBootWasSilentRestart().
-bool bootWasSilentRestart();
-void clearBootWasSilentRestart();
+// True when setup() resumed from silentRestartToReader() into the open book, until cleared.
+bool bootWasSilentRestartToReader();
+void clearBootWasSilentRestartToReader();

@@ -1287,9 +1287,9 @@ unsigned long EpubReaderActivity::confirmLongPressThreshold() const {
 }
 
 bool EpubReaderActivity::startAutoOpenSync() {
-  // Only the first reader after a silent restart is skipped; later opens in this boot sync again.
-  const bool silentBoot = bootWasSilentRestart();
-  clearBootWasSilentRestart();
+  // Only the reader a silent restart reopens is skipped; later opens in this boot sync again.
+  const bool silentBoot = bootWasSilentRestartToReader();
+  clearBootWasSilentRestartToReader();
   if (KOReaderSyncActivity::takeSkipNextAutoOpen()) return false;
 
   const autosync::OpenContext context{KOREADER_STORE.getAutoSync(), KOREADER_STORE.hasCredentials(), silentBoot, true};

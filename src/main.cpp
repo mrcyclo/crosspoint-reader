@@ -148,11 +148,11 @@ enum class BootResume : uint8_t {
 // startDeepSleep() does not return, so a set latch only ends at the wakeup reset.
 static bool deepSleepInProgress = false;
 
-static bool bootResumedSilently = false;
+static bool bootResumedIntoReader = false;
 
-bool bootWasSilentRestart() { return bootResumedSilently; }
+bool bootWasSilentRestartToReader() { return bootResumedIntoReader; }
 
-void clearBootWasSilentRestart() { bootResumedSilently = false; }
+void clearBootWasSilentRestartToReader() { bootResumedIntoReader = false; }
 
 // A silent restart is internal maintenance, so the light must come back exactly
 // as the user left it. SETTINGS.frontlightOn is the saved preference and
@@ -752,7 +752,6 @@ void setup() {
 
   switch (resume) {
     case BootResume::Silent:
-      bootResumedSilently = true;
       // Splash skipped: the routing block below picks the target activity; the
       // panel keeps showing the pre-reboot popup until that first paint lands.
       break;
@@ -791,6 +790,7 @@ void setup() {
     activityManager.goToCrashReport();
   } else if (resume == BootResume::Silent && snapshotTarget == SILENT_REBOOT_TARGET_READER &&
              !APP_STATE.openEpubPath.empty()) {
+    bootResumedIntoReader = true;
     activityManager.goToReader(APP_STATE.openEpubPath);
   } else if (resume == BootResume::Silent && snapshotTarget == SILENT_REBOOT_TARGET_JOIN_NETWORK) {
     // Rebooted on the way *into* File Transfer > Join Network for a fresh heap;

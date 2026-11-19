@@ -81,6 +81,7 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
   // Timed return for successful smart-sync terminal states.
   unsigned long autoReturnAt = 0;
   static constexpr unsigned long AUTO_RETURN_DELAY_MS = 1200;
+  static constexpr uint32_t MIN_REQUEST_BUDGET_MS = 500;
 
   // Tracks whether this session activated WiFi. Set in onEnter past the credentials
   // check; checked in onExit to decide whether to silent-reboot. Can't rely on
@@ -102,7 +103,6 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
   bool autoDeadlineExpired(const char* stage) const;
   // Caps the next request's waits to the session time left; false when too little is left to try.
   bool armAutoRequest(const char* stage) const;
-  static constexpr uint32_t MIN_REQUEST_BUDGET_MS = 500;
   void saveAutoMarker(int spineIndex, int pageNumber, float percentage) const;
 
   // The UiAppHost app hosts the interactive states (SHOWING_RESULT compare
