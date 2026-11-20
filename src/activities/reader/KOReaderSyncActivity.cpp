@@ -157,8 +157,21 @@ void KOReaderSyncActivity::saveAutoMarker(const int spineIndex, const int pageNu
   autosync::saveMarker(epubPath, marker);
 }
 
+bool KOReaderSyncActivity::heapRecoveredAfterSync() const {
+  // Allows for small allocations the session leaves behind (DNS cache, lwIP pools).
+  constexpr uint32_t HEAP_SLACK_BYTES = 16 * 1024;
+  const uint32_t freeNow = ESP.getFreeHeap();
+  const uint32_t maxBlockNow = ESP.getMaxAllocHeap();
+  LOG_INF("KOSync", "Heap after auto sync: free %u (was %u), max block %u (was %u)", static_cast<unsigned>(freeNow),
+          static_cast<unsigned>(heapFreeBeforeSync), static_cast<unsigned>(maxBlockNow),
+          static_cast<unsigned>(heapMaxBlockBeforeSync));
+  return freeNow + HEAP_SLACK_BYTES >= heapFreeBeforeSync && maxBlockNow + HEAP_SLACK_BYTES >= heapMaxBlockBeforeSync;
+}
+
 void KOReaderSyncActivity::startAutoOpen() {
   deadline.emplace(millis(), autosync::SESSION_BUDGET_MS);
+  heapFreeBeforeSync = ESP.getFreeHeap();
+  heapMaxBlockBeforeSync = ESP.getMaxAllocHeap();
   {
     RenderLock lock(*this);
     state = CONNECTING;
@@ -298,9 +311,9 @@ void KOReaderSyncActivity::performSync() {
 
   KOReaderProgress alternateProgress;
   bool hasAlternateProgress = false;
-  // In AutoOpen a primary request that failed (network, auth, server) would fail again; keep the time budget.
-  const bool primaryAnswered = result == KOReaderSyncClient::OK || result == KOReaderSyncClient::NOT_FOUND;
-  if (smartSyncEnabled() && (primaryAnswered || !isAuto())) {
+  // AutoOpen asks only by the Document Matching method chosen in the settings: the alternate lookup costs a
+  // second TLS request on every open. Manual sync still tries both.
+  if (smartSyncEnabled() && !isAuto()) {
     if (!armAutoRequest("alternate GET")) {
       returnToReader();
       return;
@@ -537,12 +550,22 @@ void KOReaderSyncActivity::onExit() {
   }
   if (!wifiActivated) return;
 
-  WiFi.disconnect(false);
-  delay(30);
   if (isAuto()) {
+#ifdef BOARD_HAS_PSRAM
+    // performUpload() may already have stopped the radio, so switch it off unconditionally.
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    if (heapRecoveredAfterSync()) return;
+    LOG_INF("KOSync", "Heap not recovered after auto sync; restarting");
+#else
+    WiFi.disconnect(false);
+    delay(30);
+#endif
     silentRestartToReaderAfterAutoSync();
     return;
   }
+  WiFi.disconnect(false);
+  delay(30);
   silentRestartToReader();
 }
 
