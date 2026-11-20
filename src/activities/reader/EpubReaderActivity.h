@@ -218,10 +218,9 @@ class EpubReaderActivity final : public ReaderActivity {
   bool startAutoOpenSync();
   // Same gates as startAutoOpenSync, without consuming its one-shot flags.
   bool autoOpenSyncExpected() const;
-  void drawAutoSyncStatus();
-  // Set at open when an automatic sync will follow: the first page is laid out but the sync status
-  // is shown in its place, so the reader never paints a page the sync is about to replace.
-  bool holdFirstPageForAutoSync = false;
+  // Set at open when an automatic sync will follow: the first page carries the sync popup until the
+  // sync starts, or is redrawn without it when the sync is skipped.
+  bool syncPopupOnFirstPage = false;
   void syncProgressBeforeSleep();
   CrossPointPosition endOfBookPosition() const;
   bool autoOpenSyncChecked = false;

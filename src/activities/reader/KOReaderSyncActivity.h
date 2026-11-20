@@ -94,12 +94,6 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
   // which makes WiFi.getMode() return WIFI_MODE_NULL.
   bool wifiActivated = false;
 
-  // Internal heap before an AutoOpen session joined Wi-Fi. On boards with PSRAM the session ends without a
-  // silent restart when turning the radio off gives this much back.
-  uint32_t heapFreeBeforeSync = 0;
-  uint32_t heapMaxBlockBeforeSync = 0;
-  bool heapRecoveredAfterSync() const;
-
   // Reuses the KOReader WiFi connect/drain/return flow without a server: flush
   // plugged-outbox events instead of syncing progress.
   bool pluginEventsOnly = false;

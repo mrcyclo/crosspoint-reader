@@ -280,7 +280,7 @@ bool EpubReaderActivity::loadBook() {
   }
   epub = std::move(loadedEpub);
   vocabularyMetadata.reset();
-  holdFirstPageForAutoSync = autoOpenSyncExpected();
+  syncPopupOnFirstPage = autoOpenSyncExpected();
 
   ImageBlock::clearRenderFailures();
   ImageBlock::setExtractor(epub.get(), [](void* ctx, const char* src, const char* dest) {
@@ -763,8 +763,8 @@ void EpubReaderActivity::loop() {
   if (bookRemembered && !autoOpenSyncChecked) {
     autoOpenSyncChecked = true;
     if (startAutoOpenSync()) return;
-    if (holdFirstPageForAutoSync) {
-      holdFirstPageForAutoSync = false;
+    if (syncPopupOnFirstPage) {
+      syncPopupOnFirstPage = false;
       requestUpdate();
     }
   }
@@ -1422,22 +1422,6 @@ bool EpubReaderActivity::autoOpenSyncExpected() const {
       true
   };
   return autosync::shouldSyncOnOpen(context);
-}
-
-void EpubReaderActivity::drawAutoSyncStatus() {
-  const Rect screen = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
-  renderer.clearScreen();
-  UITheme::drawCenteredText(
-      renderer,
-      screen,
-      UI_10_FONT_ID,
-      screen.y + screen.height / 2 - 40,
-      tr(STR_AUTO_SYNCING),
-      true,
-      EpdFontFamily::BOLD
-  );
-  renderer.displayBuffer();
-  KOReaderSyncActivity::markAutoStatusShown();
 }
 
 bool EpubReaderActivity::startAutoOpenSync() {
@@ -2184,10 +2168,10 @@ void EpubReaderActivity::renderBook() {
     currentPageLinkMarginTop = orientedMarginTop;
 
     const auto start = millis();
-    if (holdFirstPageForAutoSync) {
-      drawAutoSyncStatus();
-    } else {
-      renderContents(std::move(p), orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
+    renderContents(std::move(p), orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
+    if (syncPopupOnFirstPage) {
+      GUI.drawPopup(renderer, tr(STR_AUTO_SYNCING));
+      KOReaderSyncActivity::markAutoStatusShown();
     }
     LOG_DBG("ERS", "Rendered page in %dms", millis() - start);
     lastRenderCompleteMs = millis();
