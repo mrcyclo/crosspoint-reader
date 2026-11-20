@@ -28,7 +28,8 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
 
   explicit KOReaderSyncActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& epubPath,
                                 CrossPointPosition localPosition, SavedProgressPosition localKoPos,
-                                std::string localChapterName, Mode mode = Mode::Manual);
+                                std::string localChapterName, bool pluginEventsOnly = false,
+                                Mode mode = Mode::Manual);
 
   // True once after an AutoOpen session ends, so the reader it reopens does not sync again.
   static bool takeSkipNextAutoOpen();
@@ -88,6 +89,10 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
   // WiFi.getMode() because performUpload() calls esp_wifi_stop() on the way out,
   // which makes WiFi.getMode() return WIFI_MODE_NULL.
   bool wifiActivated = false;
+
+  // Reuses the KOReader WiFi connect/drain/return flow without a server: flush
+  // plugged-outbox events instead of syncing progress.
+  bool pluginEventsOnly = false;
 
   void onWifiSelectionComplete(bool success);
   void performSync();

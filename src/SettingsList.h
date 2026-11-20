@@ -17,9 +17,11 @@
 #include "HomeButtonSettings.h"
 #include "KOReaderCredentialStore.h"
 #include "ReaderFontSizes.h"
+#include "ReaderLineSpacing.h"
 #include "activities/settings/SettingsActivity.h"
 #include "components/UITheme.h"
 #include "util/DictionaryRegistry.h"
+#include "util/SlideSwitch.h"
 
 // Build the font family setting dynamically. When registry is non-null, SD card fonts
 // are appended after the built-in fonts. Otherwise only built-in fonts are listed.
@@ -272,17 +274,25 @@ inline std::vector<StrId> homeThemeValues() {
   return {VALUES, VALUES + count};
 }
 
-// Shared immutable list for persistence and as the base for UI settings.
-// Constructed once; persistence borrows it without copying SettingInfo entries.
-const std::vector<SettingInfo>& getBaseSettingsList();
+using SettingVisitor = void (*)(void* context, SettingInfo& info);
 
-// UI callers own a copy for runtime filtering and font/dictionary options.
+// Visits synchronously in list order. Borrowed references are valid only during
+// the callback; move from the descriptor to retain ownership. Its board conditions
+// must be fixed before settings load, or load and save would see different keys.
+void forEachBaseSetting(SettingVisitor visit, void* context);
+
+template <typename Fn>
+void forEachBaseSetting(Fn& fn) {
+  forEachBaseSetting([](void* context, SettingInfo& info) { (*static_cast<Fn*>(context))(info); }, &fn);
+}
+
+// Collects the same descriptors into an owning list for UI and web callers.
+std::vector<SettingInfo> getBaseSettingsList(size_t extraCapacity = 0);
+
+// UI callers own the list for runtime filtering and font/dictionary options.
 inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* registry = nullptr,
                                                 const std::vector<DictionaryEntry>* dictionaries = nullptr) {
-  const auto& baseList = getBaseSettingsList();
-  std::vector<SettingInfo> v;
-  v.reserve(baseList.size() + (dictionaries && !dictionaries->empty() ? 1 : 0));
-  v.insert(v.end(), baseList.begin(), baseList.end());
+  auto v = getBaseSettingsList(dictionaries && !dictionaries->empty() ? 1 : 0);
   // Frontlit and lightless variants of a board share one binary (EEGO A4);
   // presence is the I2C probe result from Frontlight.begin(). UI-only: the probe
   // has not run at load time, so the base list must keep the persisted key.
@@ -290,6 +300,49 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
     v.erase(std::remove_if(v.begin(), v.end(),
                            [](const SettingInfo& s) { return s.nameId == StrId::STR_RESTORE_LIGHT_ON_WAKE; }),
             v.end());
+  }
+  // The slide switch's position owns its bound function (the light at boot
+  // too). UI-only, so the keys stay persisted for other devices.
+  v.erase(std::remove_if(v.begin(), v.end(),
+                         [](const SettingInfo& s) {
+                           return (s.nameId == StrId::STR_RESTORE_LIGHT_ON_WAKE && slideSwitchOwnsLight()) ||
+                                  (s.nameId == StrId::STR_NIGHT_MODE &&
+                                   slideSwitchOwns(CrossPointSettings::SLIDE_SWITCH_NIGHT_MODE)) ||
+                                  (s.nameId == StrId::STR_TOUCH_READER_CONTROLS &&
+                                   slideSwitchOwns(CrossPointSettings::SLIDE_SWITCH_TOUCH_CONTROLS));
+                         }),
+          v.end());
+  // Tilt page turn needs an IMU with a gyroscope. UI-only, like the frontlight
+  // entry: a failed probe on one boot must not drop the saved value.
+  if (!halTiltSensor.isAvailable()) {
+    v.erase(
+        std::remove_if(v.begin(), v.end(), [](const SettingInfo& s) { return s.nameId == StrId::STR_TILT_PAGE_TURN; }),
+        v.end());
+  }
+  // Clock settings need the RTC, as on the device (ClockSettingsActivity).
+  if (!halClock.isAvailable()) {
+    v.erase(std::remove_if(v.begin(), v.end(),
+                           [](const SettingInfo& s) {
+                             switch (s.nameId) {
+                               case StrId::STR_CLOCK:
+                               case StrId::STR_CLOCK_FORMAT:
+                               case StrId::STR_TIMEZONE:
+                               case StrId::STR_CLOCK_DST:
+                               case StrId::STR_CLOCK_IN_HEADER:
+                               case StrId::STR_CLOCK_SYNCED:
+                                 return true;
+                               default:
+                                 return false;
+                             }
+                           }),
+            v.end());
+  }
+  // Hidden on touch boards: the Home button actions (X4 Pro) or the short
+  // power click (other touch boards) cover these shortcuts.
+  if (BoardConfig::hasTouch()) {
+    v.erase(
+        std::remove_if(v.begin(), v.end(), [](const SettingInfo& s) { return s.nameId == StrId::STR_LONG_PRESS_MENU; }),
+        v.end());
   }
   if (registry && registry->getFamilyCount() > 0) {
     auto it = std::find_if(v.begin(), v.end(), [](const SettingInfo& s) { return s.nameId == StrId::STR_FONT_FAMILY; });
