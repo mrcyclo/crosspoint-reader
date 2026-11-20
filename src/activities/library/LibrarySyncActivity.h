@@ -7,10 +7,11 @@
 
 #include "activities/Activity.h"
 
-// Library "Sync Books": mirrors the first OPDS server's acquisition feed onto
-// the card. Entries are matched by id against SYNC_STATE_FILE; new ids are
-// downloaded, a changed `updated` re-downloads, and a changed destination path
-// (renamed title or author) downloads to the new path and removes the old file.
+// Library "Sync Books": refreshes the books already on the card from the first
+// OPDS server's acquisition feed; books not on the card are never downloaded.
+// Entries are matched by id against SYNC_STATE_FILE; a changed `updated`
+// re-downloads, and a changed destination path (renamed title or author)
+// downloads to the new path and removes the old file. See autosync::planBook.
 // Finishes with SyncBooksResult{changed}; when it brought Wi-Fi up it exits
 // through silentRestart() instead.
 class LibrarySyncActivity final : public Activity {
@@ -43,7 +44,6 @@ class LibrarySyncActivity final : public Activity {
   std::vector<autosync::SyncedBook> synced;
   std::vector<Job> jobs;
   size_t nextJob = 0;
-  int added = 0;
   int updated = 0;
   int failed = 0;
   std::string currentTitle;
@@ -55,6 +55,7 @@ class LibrarySyncActivity final : public Activity {
   void runNextJob();
   bool downloadBook(const Job& job);
   void recordBook(const autosync::FeedEntry& entry, const std::string& path);
+  void forgetBook(const std::string& id);
   void writeState() const;
   void pollCancel(bool refreshInput);
   void finishSync();

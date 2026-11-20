@@ -35,6 +35,7 @@ void expectSampleEntry(const OpdsSyncFeedParser& p) {
   EXPECT_EQ(e.author, "Sample Author");
   EXPECT_EQ(e.updated, "2026-11-19T20:07:19+07:00");
   EXPECT_EQ(e.href, "http://library.example.com/api/opds/books/1/file");
+  EXPECT_EQ(e.length, 428448u);
 }
 
 }  // namespace
@@ -107,35 +108,57 @@ TEST(SyncStateTest, RoundTrip) {
   }
 }
 
-TEST(PlanBookTest, NoPreviousAndMissingDownloads) {
+TEST(PlanBookTest, NoPreviousAndMissingSkips) {
   FeedEntry e;
   e.updated = "u1";
-  EXPECT_EQ(planBook(e, nullptr, "/a.epub", false), BookAction::Download);
+  e.length = 100;
+  EXPECT_EQ(planBook(e, nullptr, "/a.epub", std::nullopt, false), BookAction::Skip);
 }
 
-TEST(PlanBookTest, NoPreviousAndExistingSkips) {
+TEST(PlanBookTest, NoPreviousAndSameSizeAdopts) {
   FeedEntry e;
   e.updated = "u1";
-  EXPECT_EQ(planBook(e, nullptr, "/a.epub", true), BookAction::Skip);
+  e.length = 100;
+  EXPECT_EQ(planBook(e, nullptr, "/a.epub", 100, false), BookAction::Adopt);
+}
+
+TEST(PlanBookTest, NoPreviousAndDifferentSizeRedownloads) {
+  FeedEntry e;
+  e.updated = "u1";
+  e.length = 100;
+  EXPECT_EQ(planBook(e, nullptr, "/a.epub", 99, false), BookAction::Redownload);
+}
+
+TEST(PlanBookTest, NoPreviousAndUnknownLengthRedownloads) {
+  FeedEntry e;
+  e.updated = "u1";
+  EXPECT_EQ(planBook(e, nullptr, "/a.epub", 100, false), BookAction::Redownload);
+}
+
+TEST(PlanBookTest, PreviousFileDeletedForgets) {
+  FeedEntry e;
+  e.updated = "u2";
+  const SyncedBook prev{"id", "u1", "/a.epub"};
+  EXPECT_EQ(planBook(e, &prev, "/a.epub", std::nullopt, false), BookAction::Forget);
 }
 
 TEST(PlanBookTest, PathChangedMovesAndRedownloads) {
   FeedEntry e;
   e.updated = "u1";
   const SyncedBook prev{"id", "u1", "/old.epub"};
-  EXPECT_EQ(planBook(e, &prev, "/a.epub", true), BookAction::MoveAndRedownload);
+  EXPECT_EQ(planBook(e, &prev, "/a.epub", std::nullopt, true), BookAction::MoveAndRedownload);
 }
 
 TEST(PlanBookTest, UpdatedChangedRedownloads) {
   FeedEntry e;
   e.updated = "u2";
   const SyncedBook prev{"id", "u1", "/a.epub"};
-  EXPECT_EQ(planBook(e, &prev, "/a.epub", true), BookAction::Redownload);
+  EXPECT_EQ(planBook(e, &prev, "/a.epub", 100, true), BookAction::Redownload);
 }
 
 TEST(PlanBookTest, UnchangedSkips) {
   FeedEntry e;
   e.updated = "u1";
   const SyncedBook prev{"id", "u1", "/a.epub"};
-  EXPECT_EQ(planBook(e, &prev, "/a.epub", true), BookAction::Skip);
+  EXPECT_EQ(planBook(e, &prev, "/a.epub", 100, true), BookAction::Skip);
 }

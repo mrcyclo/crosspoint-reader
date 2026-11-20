@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -8,6 +9,7 @@ namespace autosync {
 
 struct FeedEntry {
   std::string id, title, author, href, updated;
+  size_t length = 0;  // 0 when the acquisition link has no length attribute
 };
 
 // Streaming parser: feed() accepts arbitrary chunk boundaries.
@@ -50,7 +52,16 @@ std::vector<SyncedBook> parseSyncState(const std::string& text);
 std::string serializeSyncState(const std::vector<SyncedBook>& books);
 constexpr const char* SYNC_STATE_FILE = "/.crosspoint/opds-sync.tsv";
 
-enum class BookAction { Skip, Download, Redownload, MoveAndRedownload };
-BookAction planBook(const FeedEntry& entry, const SyncedBook* previous, const std::string& destPath, bool destExists);
+// Only books already on the card are kept up to date; new ones are never downloaded.
+// Adopt records an untracked copy whose size matches the feed; Forget drops a tracked
+// book the user deleted from the card.
+enum class BookAction { Skip, Adopt, Forget, Redownload, MoveAndRedownload };
+BookAction planBook(
+    const FeedEntry& entry,
+    const SyncedBook* previous,
+    const std::string& destPath,
+    std::optional<size_t> destSize,
+    bool previousExists
+);
 
 }  // namespace autosync

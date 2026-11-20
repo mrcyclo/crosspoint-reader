@@ -41,6 +41,14 @@ bool isEpubFile(const std::string& path) {
       && magic[3] == 4;
 }
 
+std::optional<size_t> fileSize(const std::string& path) {
+  HalFile file;
+  if (!Storage.openFileForRead("SYNC", path.c_str(), file)) return std::nullopt;
+  const size_t size = file.fileSize();
+  file.close();
+  return size;
+}
+
 }  // namespace
 
 void LibrarySyncActivity::onEnter() {
@@ -166,7 +174,7 @@ void LibrarySyncActivity::planJobs() {
     synced = autosync::parseSyncState(text);
   }
 
-  bool adopted = false;
+  bool stateChanged = false;
   for (size_t i = 0; i < entries.size(); ++i) {
     const auto& entry = entries[i];
     const std::string dest = opdsDownloadPath(entry.author, entry.title);
@@ -182,19 +190,27 @@ void LibrarySyncActivity::planJobs() {
         break;
       }
     }
-    const bool destExists = Storage.exists(dest.c_str());
-    const autosync::BookAction action = autosync::planBook(entry, previous, dest, destExists);
-    if (action != autosync::BookAction::Skip) {
-      jobs.push_back({i, action, dest, previous ? previous->path : std::string()});
-      continue;
-    }
-    if (!previous) {
-      // Already on the card from an earlier manual download: track it from now on.
-      recordBook(entry, dest);
-      adopted = true;
+    const std::optional<size_t> destSize = fileSize(dest);
+    const bool previousExists = previous && Storage.exists(previous->path.c_str());
+    const autosync::BookAction action = autosync::planBook(entry, previous, dest, destSize, previousExists);
+    switch (action) {
+      case autosync::BookAction::Skip:
+        break;
+      case autosync::BookAction::Adopt:
+        recordBook(entry, dest);
+        stateChanged = true;
+        break;
+      case autosync::BookAction::Forget:
+        forgetBook(entry.id);
+        stateChanged = true;
+        break;
+      case autosync::BookAction::Redownload:
+      case autosync::BookAction::MoveAndRedownload:
+        jobs.push_back({i, action, dest, previous ? previous->path : std::string()});
+        break;
     }
   }
-  if (adopted) {
+  if (stateChanged) {
     writeState();
   }
   LOG_INF("SYNC", "%u to download", static_cast<unsigned>(jobs.size()));
@@ -222,11 +238,7 @@ void LibrarySyncActivity::runNextJob() {
       && !removeBookFile(job.previousPath)) {
     LOG_ERR("SYNC", "Could not remove old copy %s", job.previousPath.c_str());
   }
-  if (job.action == autosync::BookAction::Download) {
-    ++added;
-  } else {
-    ++updated;
-  }
+  ++updated;
   recordBook(entry, job.dest);
   writeState();
 }
@@ -286,6 +298,15 @@ void LibrarySyncActivity::recordBook(const autosync::FeedEntry& entry, const std
   synced.push_back({entry.id, entry.updated, path});
 }
 
+void LibrarySyncActivity::forgetBook(const std::string& id) {
+  for (auto it = synced.begin(); it != synced.end(); ++it) {
+    if (it->id == id) {
+      synced.erase(it);
+      return;
+    }
+  }
+}
+
 void LibrarySyncActivity::writeState() const {
   const std::string tmp = std::string(autosync::SYNC_STATE_FILE) + ".tmp";
   const std::string text = autosync::serializeSyncState(synced);
@@ -320,8 +341,8 @@ void LibrarySyncActivity::pollCancel(const bool refreshInput) {
 
 void LibrarySyncActivity::finishSync() {
   const char* suffix = cancelRequested ? " (cancelled)" : "";
-  LOG_INF("SYNC", "Done: %d new, %d updated, %d failed%s", added, updated, failed, suffix);
-  if (added + updated > 0) {
+  LOG_INF("SYNC", "Done: %d updated, %d failed%s", updated, failed, suffix);
+  if (updated > 0) {
     library::markLibraryIndexDirty();
   }
   RenderLock lock(*this);
@@ -330,7 +351,7 @@ void LibrarySyncActivity::finishSync() {
 }
 
 void LibrarySyncActivity::exitWithResult() {
-  setResult(SyncBooksResult{added + updated > 0});
+  setResult(SyncBooksResult{updated > 0});
   finish();
 }
 
@@ -368,7 +389,7 @@ void LibrarySyncActivity::render(RenderLock&&) {
       renderer.drawCenteredText(UI_10_FONT_ID, midY + 10, tr(STR_DOWNLOAD_FAILED));
       break;
     case State::Done:
-      snprintf(line, sizeof(line), tr(STR_SYNC_BOOKS_SUMMARY), added, updated, failed);
+      snprintf(line, sizeof(line), tr(STR_SYNC_BOOKS_SUMMARY), updated, failed);
       renderer.drawCenteredText(UI_12_FONT_ID, midY, line, true, EpdFontFamily::BOLD);
       break;
   }

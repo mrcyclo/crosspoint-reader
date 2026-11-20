@@ -2,6 +2,8 @@
 
 #include <expat.h>
 
+#include <cstdlib>
+
 namespace autosync {
 
 namespace {
@@ -103,6 +105,7 @@ void OpdsSyncFeedParser::handleStart(const char* name, const char** attrs) {
   if (hasEpubLink) return;
   hasEpubLink = true;
   current.href = attr(attrs, "href");
+  current.length = static_cast<size_t>(strtoull(attr(attrs, "length").c_str(), nullptr, 10));
 }
 
 void OpdsSyncFeedParser::handleEnd(const char*) {
@@ -192,8 +195,19 @@ std::string serializeSyncState(const std::vector<SyncedBook>& books) {
   return out;
 }
 
-BookAction planBook(const FeedEntry& entry, const SyncedBook* previous, const std::string& destPath, bool destExists) {
-  if (!previous) return destExists ? BookAction::Skip : BookAction::Download;
+BookAction planBook(
+    const FeedEntry& entry,
+    const SyncedBook* previous,
+    const std::string& destPath,
+    const std::optional<size_t> destSize,
+    const bool previousExists
+) {
+  if (!previous) {
+    if (!destSize) return BookAction::Skip;
+    if (entry.length > 0 && *destSize == entry.length) return BookAction::Adopt;
+    return BookAction::Redownload;
+  }
+  if (!previousExists) return BookAction::Forget;
   if (previous->path != destPath) return BookAction::MoveAndRedownload;
   if (previous->updated != entry.updated) return BookAction::Redownload;
   return BookAction::Skip;
