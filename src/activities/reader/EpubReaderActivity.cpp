@@ -280,6 +280,7 @@ bool EpubReaderActivity::loadBook() {
   }
   epub = std::move(loadedEpub);
   vocabularyMetadata.reset();
+  holdFirstPageForAutoSync = autoOpenSyncExpected();
 
   ImageBlock::clearRenderFailures();
   ImageBlock::setExtractor(epub.get(), [](void* ctx, const char* src, const char* dest) {
@@ -762,6 +763,10 @@ void EpubReaderActivity::loop() {
   if (bookRemembered && !autoOpenSyncChecked) {
     autoOpenSyncChecked = true;
     if (startAutoOpenSync()) return;
+    if (holdFirstPageForAutoSync) {
+      holdFirstPageForAutoSync = false;
+      requestUpdate();
+    }
   }
 
   // The radio stopped for a chapter build: once the render task has let go of the lock, that page
@@ -1406,6 +1411,33 @@ unsigned long EpubReaderActivity::confirmLongPressThreshold() const {
     default:
       return 0;
   }
+}
+
+bool EpubReaderActivity::autoOpenSyncExpected() const {
+  if (KOReaderSyncActivity::skipNextAutoOpenPending()) return false;
+  const autosync::OpenContext context{
+      KOREADER_STORE.getAutoSync(),
+      KOREADER_STORE.hasCredentials(),
+      bootWasSilentRestartToReader(),
+      true
+  };
+  return autosync::shouldSyncOnOpen(context);
+}
+
+void EpubReaderActivity::drawAutoSyncStatus() {
+  const Rect screen = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+  renderer.clearScreen();
+  UITheme::drawCenteredText(
+      renderer,
+      screen,
+      UI_10_FONT_ID,
+      screen.y + screen.height / 2 - 40,
+      tr(STR_AUTO_SYNCING),
+      true,
+      EpdFontFamily::BOLD
+  );
+  renderer.displayBuffer();
+  KOReaderSyncActivity::markAutoStatusShown();
 }
 
 bool EpubReaderActivity::startAutoOpenSync() {
@@ -2152,7 +2184,11 @@ void EpubReaderActivity::renderBook() {
     currentPageLinkMarginTop = orientedMarginTop;
 
     const auto start = millis();
-    renderContents(std::move(p), orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
+    if (holdFirstPageForAutoSync) {
+      drawAutoSyncStatus();
+    } else {
+      renderContents(std::move(p), orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
+    }
     LOG_DBG("ERS", "Rendered page in %dms", millis() - start);
     lastRenderCompleteMs = millis();
     markPageRendered();

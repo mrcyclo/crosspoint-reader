@@ -33,6 +33,9 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
 
   // True once after an AutoOpen session ends, so the reader it reopens does not sync again.
   static bool takeSkipNextAutoOpen();
+  static bool skipNextAutoOpenPending() { return skipNextAutoOpen; }
+  // The reader already put the AutoOpen status on screen; the session must not repaint it.
+  static void markAutoStatusShown() { autoStatusShownByReader = true; }
 
   void onEnter() override;
   void onExit() override;
@@ -60,6 +63,7 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
   bool autoStatusDrawn = false;
   bool returnRequested = false;
   static bool skipNextAutoOpen;
+  static bool autoStatusShownByReader;
   std::string epubPath;
   std::string localChapterName;
   CrossPointPosition localPosition;

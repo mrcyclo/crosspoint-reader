@@ -70,6 +70,7 @@ KOReaderSyncActivity::KOReaderSyncActivity(GfxRenderer& renderer, MappedInputMan
       pluginEventsOnly(pluginEventsOnly) {}
 
 bool KOReaderSyncActivity::skipNextAutoOpen = false;
+bool KOReaderSyncActivity::autoStatusShownByReader = false;
 
 bool KOReaderSyncActivity::takeSkipNextAutoOpen() {
   const bool skip = skipNextAutoOpen;
@@ -493,6 +494,11 @@ void KOReaderSyncActivity::onEnter() {
   resetUi();
   app.on(ACTION_ROW, &KOReaderSyncActivity::onResultRow, this);
   app.setScreen(&KOReaderSyncActivity::resultScreen, this);
+
+  if (isAuto()) {
+    autoStatusDrawn = autoStatusShownByReader;
+  }
+  autoStatusShownByReader = false;
 
   // Check for credentials first (plugin-events-only mode needs none).
   if (!pluginEventsOnly && !KOREADER_STORE.hasCredentials()) {
