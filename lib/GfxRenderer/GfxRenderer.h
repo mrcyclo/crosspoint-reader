@@ -107,6 +107,9 @@ class GfxRenderer {
   // app-level SD font setup when an SD family is loaded. See resolveTextFontId().
   std::map<int, int> fallbackFontMap_;
   FontVariantProvider fontVariantProvider_;
+  // Gray pass of a UI screen: only 2-bit glyphs write, so re-running the
+  // screen's render fills the gray planes with text edges and nothing else.
+  mutable bool glyphCapture_ = false;
 
   // If `text` contains a CJK codepoint that `fontId` cannot render and `fontId`
   // has a registered fallback, returns the fallback id; otherwise returns
@@ -187,6 +190,12 @@ class GfxRenderer {
   // setFallbackFont maps a primary UI font id to an SD font id of the same size.
   void setFallbackFont(int primaryFontId, int fallbackFontId) { fallbackFontMap_[primaryFontId] = fallbackFontId; }
   void clearFallbackFonts() { fallbackFontMap_.clear(); }
+  // See glyphCapture_. Display calls are skipped while capturing.
+  void beginGlyphCapture() const { glyphCapture_ = true; }
+  void endGlyphCapture() const { glyphCapture_ = false; }
+  // Tells a UI gray pass apart from the reader's text overlay pass, which is
+  // also a non-BW render mode.
+  bool isGlyphCapture() const { return glyphCapture_; }
 
   void setFontVariantProvider(const FontVariantProvider& provider) { fontVariantProvider_ = provider; }
   int resolveFontVariant(const int fontId, const float scale) const {
