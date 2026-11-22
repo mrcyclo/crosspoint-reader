@@ -123,8 +123,7 @@ constexpr uint32_t SILENT_REBOOT_TARGET_HOME = 0;
 constexpr uint32_t SILENT_REBOOT_TARGET_READER = 1;
 constexpr uint32_t SILENT_REBOOT_TARGET_SETTINGS = 2;
 constexpr uint32_t SILENT_REBOOT_TARGET_JOIN_NETWORK = 3;
-constexpr uint32_t SILENT_REBOOT_TARGET_READER_AFTER_AUTO_SYNC = 4;
-constexpr uint32_t SILENT_REBOOT_TARGET_MAX = SILENT_REBOOT_TARGET_READER_AFTER_AUTO_SYNC;
+constexpr uint32_t SILENT_REBOOT_TARGET_MAX = SILENT_REBOOT_TARGET_JOIN_NETWORK;
 constexpr uint32_t SILENT_REBOOT_LIGHT_ON = 1U << 0;
 constexpr uint32_t SILENT_REBOOT_SUPPRESS_POWER = 1U << 1;
 
@@ -158,15 +157,11 @@ static void idleDisplayWhileAwake() {
 }
 
 static bool bootResumedIntoReader = false;
-static bool bootResumedAfterAutoSync = false;
 
 bool bootWasSilentRestartToReader() { return bootResumedIntoReader; }
 
-bool bootFollowedAutoOpenSync() { return bootResumedAfterAutoSync; }
-
 void clearBootWasSilentRestartToReader() {
   bootResumedIntoReader = false;
-  bootResumedAfterAutoSync = false;
 }
 
 // A silent restart is internal maintenance, so the light must come back exactly
@@ -201,10 +196,6 @@ static void silentRestartTo(const uint32_t target, const char* targetName) {
 void silentRestart() { silentRestartTo(SILENT_REBOOT_TARGET_HOME, "home"); }
 
 void silentRestartToReader() { silentRestartTo(SILENT_REBOOT_TARGET_READER, "reader"); }
-
-void silentRestartToReaderAfterAutoSync() {
-  silentRestartTo(SILENT_REBOOT_TARGET_READER_AFTER_AUTO_SYNC, "reader after auto sync");
-}
 
 void silentRestartToSettings() { silentRestartTo(SILENT_REBOOT_TARGET_SETTINGS, "settings"); }
 
@@ -710,8 +701,7 @@ void setup() {
   const bool isSilentReboot = (silentRebootMagic == SILENT_REBOOT_MAGIC);
   const uint32_t snapshotTarget =
       (isSilentReboot && silentRebootTarget <= SILENT_REBOOT_TARGET_MAX) ? silentRebootTarget : 0;
-  const bool silentTargetIsReader = snapshotTarget == SILENT_REBOOT_TARGET_READER
-      || snapshotTarget == SILENT_REBOOT_TARGET_READER_AFTER_AUTO_SYNC;
+  const bool silentTargetIsReader = snapshotTarget == SILENT_REBOOT_TARGET_READER;
   const bool silentRebootLightOn = isSilentReboot && (silentRebootPayload & SILENT_REBOOT_LIGHT_ON) != 0;
   const bool suppressRestartPower = isSilentReboot && (silentRebootPayload & SILENT_REBOOT_SUPPRESS_POWER) != 0;
   silentRebootMagic = 0;
@@ -943,7 +933,6 @@ void setup() {
     activityManager.goToCrashReport();
   } else if (resume == BootResume::Silent && silentTargetIsReader && !APP_STATE.openEpubPath.empty()) {
     bootResumedIntoReader = true;
-    bootResumedAfterAutoSync = snapshotTarget == SILENT_REBOOT_TARGET_READER_AFTER_AUTO_SYNC;
     activityManager.goToReader(APP_STATE.openEpubPath);
   } else if (resume == BootResume::Silent && snapshotTarget == SILENT_REBOOT_TARGET_JOIN_NETWORK) {
     // Rebooted on the way *into* File Transfer > Join Network for a fresh heap;

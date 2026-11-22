@@ -23,7 +23,6 @@
 #include "components/UiAppHelpers.h"  // list icons for the compare rows
 #include "fontIds.h"
 #include "network/WifiPowerSaveGuard.h"
-#include "sync/AutoSyncMarkerStore.h"
 #include "sync/AutoSyncWifi.h"
 #include "sync/SyncEngine.h"
 #include "util/PluginEvents.h"
@@ -99,7 +98,6 @@ void KOReaderSyncActivity::saveProgressAndReturn(int spineIndex, int page) {
     requestUpdate(true);
     return;
   }
-  saveAutoMarker(spineIndex, page, remoteProgress.percentage);
   returnToReader();
 }
 
@@ -131,16 +129,6 @@ bool KOReaderSyncActivity::armAutoRequest(const char* stage) const {
   return true;
 }
 
-void KOReaderSyncActivity::saveAutoMarker(const int spineIndex, const int pageNumber, const float percentage) const {
-  if (!isAuto()) return;
-  autosync::Marker marker;
-  marker.spineIndex = static_cast<uint16_t>(spineIndex);
-  marker.pageNumber = static_cast<uint16_t>(pageNumber);
-  marker.percentage = percentage;
-  marker.pulledThisSession = true;
-  autosync::saveMarker(epubPath, marker);
-}
-
 void KOReaderSyncActivity::startAutoOpen() {
   deadline.emplace(millis(), autosync::SESSION_BUDGET_MS);
   {
@@ -168,7 +156,6 @@ void KOReaderSyncActivity::startAutoOpen() {
 void KOReaderSyncActivity::markAutoReturn() { autoReturnAt = millis() + AUTO_RETURN_DELAY_MS; }
 
 void KOReaderSyncActivity::completeAlreadySynced() {
-  saveAutoMarker(localPosition.spineIndex, localPosition.pageNumber, localProgress.percentage);
   {
     RenderLock lock(*this);
     state = SYNC_COMPLETE;
@@ -416,7 +403,6 @@ void KOReaderSyncActivity::performUpload() {
     return;
   }
 
-  saveAutoMarker(localPosition.spineIndex, localPosition.pageNumber, localProgress.percentage);
   {
     RenderLock lock(*this);
     state = UPLOAD_COMPLETE;
@@ -477,10 +463,6 @@ void KOReaderSyncActivity::onExit() {
 
   WiFi.disconnect(false);
   delay(30);
-  if (isAuto()) {
-    silentRestartToReaderAfterAutoSync();
-    return;
-  }
   silentRestartToReader();
 }
 

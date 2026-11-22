@@ -112,7 +112,6 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
   bool autoDeadlineExpired(const char* stage) const;
   // Caps the next request's waits to the session time left; false when too little is left to try.
   bool armAutoRequest(const char* stage) const;
-  void saveAutoMarker(int spineIndex, int pageNumber, float percentage) const;
 
   // The UiAppHost app hosts the interactive states (SHOWING_RESULT compare
   // rows and the NO_REMOTE_PROGRESS upload prompt) so they get themed
