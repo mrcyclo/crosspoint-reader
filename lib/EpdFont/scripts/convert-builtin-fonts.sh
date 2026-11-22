@@ -19,11 +19,11 @@ done
 
 UI_FONT_SIZES=(10 12)
 UI_FONT_STYLES=("Regular" "Bold")
-# UI fonts are 1-bit. Native hinting leaves stems at fractional pixel offsets, so the ink
-# threshold prints the same stem a pixel wider or narrower; the auto-hinter snaps stem widths
-# to whole pixels. It also flattens a tilde or a stacked breve into a bar, so glyphs with
-# those marks keep native hinting.
-UI_HINTING=(--force-autohint --native-hint-mark 0x0303 --native-hint-mark 0x0306)
+# UI fonts are 2-bit: a B/W paint draws every inked level, and UI anti-aliasing adds the grays.
+# Native hinting leaves stems at fractional pixel offsets, so the same stem prints a pixel wider
+# or narrower; the auto-hinter snaps stem widths to whole pixels. It also flattens a tilde or a
+# stacked breve into a bar, so glyphs with those marks keep native hinting.
+UI_HINTING=(--2bit --force-autohint --native-hint-mark 0x0303 --native-hint-mark 0x0306)
 
 # Arabic glyphs for UI text (menus, file browser titles). The built-in fonts
 # must cover the *output* of MiniBidi's do_shape() — contextual presentation
