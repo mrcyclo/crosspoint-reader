@@ -16,7 +16,6 @@
 #include <Memory.h>
 #include <TrustedTime.h>
 #include <WiFi.h>
-#include <esp_heap_caps.h>
 #include <esp_system.h>
 
 #include <algorithm>
@@ -60,8 +59,7 @@
 #include "clippings/ClippingsManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
-#include "sync/AutoSyncMarkerStore.h"
-#include "sync/SleepSync.h"
+#include "sync/SyncEngine.h"
 #include "util/BookmarkUtil.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
@@ -179,9 +177,10 @@ void moveFinishedBookToReadFolder(const std::string& srcPath, const std::string&
     return;
   }
 
-  // Protected-book sidecars travel with the book; a protected book separated
-  // from its key no longer opens, so a failed move rolls everything back.
-  static constexpr const char* SIDECARS[] = {".key", ".rights"};
+  // Sidecars travel with the book: a protected book separated from its key no
+  // longer opens, and sync reads the plugin metadata next to the book. A failed
+  // move rolls everything back.
+  static constexpr const char* SIDECARS[] = {".key", ".rights", ".meta.json"};
   for (size_t i = 0; i < std::size(SIDECARS); i++) {
     const std::string from = srcPath + SIDECARS[i];
     if (!Storage.exists(from.c_str())) continue;
@@ -206,7 +205,17 @@ void moveFinishedBookToReadFolder(const std::string& srcPath, const std::string&
     }
   }
 
+  // Bookmarks are stored under the book's path. Like the cache, a failed move
+  // is not fatal: the book is already in place.
+  const std::string oldBookmarkPath = BookmarkUtil::getBookmarkPath(srcPath);
+  const std::string newBookmarkPath = BookmarkUtil::getBookmarkPath(dstPath);
+  if (Storage.exists(oldBookmarkPath.c_str()) &&
+      (Storage.exists(newBookmarkPath.c_str()) || !Storage.rename(oldBookmarkPath.c_str(), newBookmarkPath.c_str()))) {
+    LOG_ERR("ERS", "Failed to move bookmarks %s -> %s (non-fatal)", oldBookmarkPath.c_str(), newBookmarkPath.c_str());
+  }
+
   RECENT_BOOKS.updatePath(srcPath, dstPath, oldCachePath, cacheMoved ? newCachePath : oldCachePath);
+  syncEngine::sleepBookMoved(srcPath, dstPath);
   if (APP_STATE.openEpubPath == srcPath) {
     APP_STATE.openEpubPath = dstPath;
     APP_STATE.saveToFile();
@@ -1415,12 +1424,8 @@ unsigned long EpubReaderActivity::confirmLongPressThreshold() const {
 
 bool EpubReaderActivity::autoOpenSyncExpected() const {
   if (KOReaderSyncActivity::skipNextAutoOpenPending()) return false;
-  const autosync::OpenContext context{
-      KOREADER_STORE.getAutoSync(),
-      KOREADER_STORE.hasCredentials(),
-      bootWasSilentRestartToReader(),
-      true
-  };
+  const autosync::OpenContext context{KOREADER_STORE.getSyncOnOpen(), KOREADER_STORE.hasCredentials(),
+                                      bootWasSilentRestartToReader(), true};
   return autosync::shouldSyncOnOpen(context);
 }
 
@@ -1428,114 +1433,14 @@ bool EpubReaderActivity::startAutoOpenSync() {
   // Only the reader a silent restart reopens is skipped; later opens in this boot sync again.
   const bool silentBoot = bootWasSilentRestartToReader();
   const bool returningFromAutoOpen = KOReaderSyncActivity::takeSkipNextAutoOpen();
-  const bool afterAutoOpenSync = returningFromAutoOpen || bootFollowedAutoOpenSync();
   clearBootWasSilentRestartToReader();
-  // The flag only vouches for the AutoOpen pull that led straight into this reader. Any other open leaves it
-  // false, so the sleep push compares with the server first.
-  if (!afterAutoOpenSync) {
-    autosync::clearPulledThisSession(epub->getPath());
-  }
   if (returningFromAutoOpen) return false;
 
-  const autosync::OpenContext context{KOREADER_STORE.getAutoSync(), KOREADER_STORE.hasCredentials(), silentBoot, true};
+  const autosync::OpenContext context{KOREADER_STORE.getSyncOnOpen(), KOREADER_STORE.hasCredentials(), silentBoot,
+                                      true};
   if (!autosync::shouldSyncOnOpen(context)) return false;
 
   return launchKOReaderSync(KOReaderSyncActivity::Mode::AutoOpen);
-}
-
-namespace {
-
-struct HeapCapsDeleter {
-  void operator()(uint8_t* bytes) const { heap_caps_free(bytes); }
-};
-using FrameCopy = std::unique_ptr<uint8_t, HeapCapsDeleter>;
-
-FrameCopy copyFrame(const GfxRenderer& renderer) {
-  FrameCopy copy(static_cast<uint8_t*>(heap_caps_malloc(renderer.getBufferSize(), MALLOC_CAP_SPIRAM)));
-  if (copy) {
-    memcpy(copy.get(), renderer.getFrameBuffer(), renderer.getBufferSize());
-  }
-  return copy;
-}
-
-}  // namespace
-
-void EpubReaderActivity::prepareForSleep() {
-  ReaderActivity::prepareForSleep();
-  syncProgressBeforeSleep();
-}
-
-CrossPointPosition EpubReaderActivity::endOfBookPosition() const {
-  // Without the last chapter's layout, page 1 of 2 still maps to the end of that chapter.
-  CrossPointPosition pos{epub->getSpineItemsCount() - 1, 1, 2};
-  pos.hasResolvedSpineIndex = true;
-  pos.hasMappedPage = true;
-  // Paging off the last page keeps the last chapter loaded.
-  if (!section || section->pageCount == 0) return pos;
-
-  pos.totalPages = section->pageCount;
-  pos.pageNumber = section->pageCount - 1;
-  if (const auto offset = section->getVisibleTextOffsetForPage(static_cast<uint16_t>(pos.pageNumber))) {
-    pos.visibleTextOffset = *offset;
-    pos.hasVisibleTextOffset = true;
-  }
-  return pos;
-}
-
-// ActivityManager::prepareForSleep holds the RenderLock for this whole call. It also runs while a reader
-// sub-activity is on top, with this reader on the activity stack.
-void EpubReaderActivity::syncProgressBeforeSleep() {
-  const bool atEndOfBook = epub && epub->getSpineItemsCount() > 0 && isAtEndOfBook();
-  const bool inEpubReader = epub && (section || atEndOfBook);
-  if (!autosync::shouldSyncOnSleep(KOREADER_STORE.getAutoSync(), KOREADER_STORE.hasCredentials(), inEpubReader)) return;
-  if (!sleepSyncNetworkAllowed()) {
-    LOG_INF("AUTOSYNC", "Sleep sync skipped: Bluetooth did not stop or the battery is low");
-    return;
-  }
-
-  if (!atEndOfBook && !saveProgress(currentSpineIndex, section->currentPage, section->estimatedTotalPages())) {
-    LOG_ERR("KOSync", "Sleep sync skipped because current progress could not be saved");
-    return;
-  }
-
-  const CrossPointPosition localPos = atEndOfBook ? endOfBookPosition() : getCurrentPosition();
-  const auto marker = autosync::loadMarker(epub->getPath());
-  if (autosync::decideSleepPush(marker, localPos.spineIndex, localPos.pageNumber) == autosync::SleepPush::Skip) {
-    return;
-  }
-
-  // Only the page can be redrawn. Any other screen (end of book, a sub-activity) is copied and put back,
-  // so Quick Resume keeps what the user saw.
-  const bool repaintPage = !atEndOfBook && activityManager.isForegroundReader();
-  FrameCopy screen;
-  if (!repaintPage) {
-    screen = copyFrame(renderer);
-    if (!screen) {
-      LOG_ERR("AUTOSYNC", "Sleep sync skipped: no memory to keep the screen");
-      return;
-    }
-  }
-
-  // The panel keeps showing the popup while the mapper borrows the framebuffer.
-  GUI.drawPopup(renderer, tr(STR_AUTO_SYNCING));
-  SavedProgressPosition localKoPos;
-  {
-    GfxRenderer::FrameBufferLoan loan(renderer);
-    localKoPos = ProgressMapper::toSavedProgress(epub, localPos);
-  }
-  if (atEndOfBook) {
-    localKoPos.percentage = 1.0f;
-  }
-
-  syncBeforeSleep(epub->getPath(), localPos, localKoPos);
-
-  // The loan returned a blank buffer; Quick Resume saves whatever is drawn here.
-  if (repaintPage) {
-    renderBook();
-    return;
-  }
-  memcpy(renderer.getFrameBuffer(), screen.get(), renderer.getBufferSize());
-  renderer.displayBuffer();
 }
 
 bool EpubReaderActivity::launchKOReaderSync(const KOReaderSyncActivity::Mode mode) {
@@ -1595,15 +1500,7 @@ bool EpubReaderActivity::launchKOReaderSync(const KOReaderSyncActivity::Mode mod
   LOG_DBG("KOSync", "Epub released (heap after: %u)", (unsigned)ESP.getFreeHeap());
 
   activityManager.replaceActivity(std::make_unique<KOReaderSyncActivity>(
-      renderer,
-      mappedInput,
-      savedEpubPath,
-      localPos,
-      std::move(localKoPos),
-      std::move(localChapterName),
-      false,
-      mode
-  ));
+      renderer, mappedInput, savedEpubPath, localPos, std::move(localKoPos), std::move(localChapterName), false, mode));
   return true;
 }
 
@@ -3576,6 +3473,21 @@ void EpubReaderActivity::restoreSavedPosition() {
     section.reset();
   }
   requestUpdate();
+}
+
+void EpubReaderActivity::prepareForSleep() {
+  ReaderActivity::prepareForSleep();
+  if (!epub || !KOREADER_STORE.getSyncOnSleep() || !KOREADER_STORE.hasCredentials()) return;
+  // Sync On Sleep runs after this activity is gone, so hand over the position now.
+  // ActivityManager already holds the render lock here; taking it again would deadlock.
+  CrossPointPosition position = getCurrentPosition();
+  if (isAtEndOfBook() && epub->getSpineItemsCount() > 0) {
+    // The finished screen sits one past the last chapter, which has no size or XPath.
+    // Hand over the end of the last chapter instead.
+    position = {epub->getSpineItemsCount() - 1, 1, 2};
+    position.hasResolvedSpineIndex = true;
+  }
+  syncEngine::noteSleepBook(epub->getPath(), position);
 }
 
 void EpubReaderActivity::loadCachedBookmarks() {

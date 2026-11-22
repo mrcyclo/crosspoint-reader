@@ -9,7 +9,6 @@
 
 void silentRestart();            // home screen
 void silentRestartToReader();    // currently-open EPUB (APP_STATE.openEpubPath)
-void silentRestartToReaderAfterAutoSync();  // same, leaving an AutoOpen progress sync
 void silentRestartToSettings();  // settings screen
 // Reboot into the File Transfer > Join Network flow on a pristine heap, so the
 // WiFi + TLS working set has the contiguous RAM it needs on tight boards. A
@@ -23,6 +22,4 @@ void restartToHomeAfterStorageHandoff();
 
 // True when setup() resumed from silentRestartToReader() into the open book, until cleared.
 bool bootWasSilentRestartToReader();
-// True when that restart came from silentRestartToReaderAfterAutoSync(); cleared together with the flag above.
-bool bootFollowedAutoOpenSync();
 void clearBootWasSilentRestartToReader();

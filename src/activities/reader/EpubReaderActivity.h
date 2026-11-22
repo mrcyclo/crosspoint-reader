@@ -221,8 +221,6 @@ class EpubReaderActivity final : public ReaderActivity {
   // Set at open when an automatic sync will follow: the first page carries the sync popup until the
   // sync starts, or is redrawn without it when the sync is skipped.
   bool syncPopupOnFirstPage = false;
-  void syncProgressBeforeSleep();
-  CrossPointPosition endOfBookPosition() const;
   bool autoOpenSyncChecked = false;
   unsigned long confirmLongPressThreshold() const;
   void toggleAutoPageTurn(uint8_t selectedPageTurnOption);
