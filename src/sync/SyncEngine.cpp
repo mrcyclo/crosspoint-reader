@@ -49,13 +49,13 @@ std::string syncEngine::documentId(const std::string& bookPath) {
   return documentIdFor(bookPath, KOREADER_STORE.getMatchMethod());
 }
 
-syncEngine::Pull syncEngine::pull(const std::string& bookPath, const bool smartSync, const bool withExtensions) {
+syncEngine::Pull syncEngine::pull(const std::string& bookPath, const bool smartSync) {
   Pull pull;
   const DocumentMatchMethod method = KOREADER_STORE.getMatchMethod();
   pull.documentHash = documentIdFor(bookPath, method);
   if (pull.documentHash.empty()) return pull;
 
-  pull.extensionsSynced = !withExtensions || syncExtensions(bookPath, pull.documentHash);
+  pull.extensionsSynced = syncExtensions(bookPath, pull.documentHash);
   if (!pull.extensionsSynced) return pull;
 
   pull.result = KOReaderSyncClient::getProgress(pull.documentHash, pull.remote);

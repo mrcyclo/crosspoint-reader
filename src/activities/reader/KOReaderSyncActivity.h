@@ -11,6 +11,10 @@
 #include "activities/Activity.h"
 #include "components/UiAppHost.h"
 
+namespace syncEngine {
+struct Pull;
+}
+
 /**
  * Activity for syncing reading progress with KOReader sync server.
  *
@@ -28,8 +32,7 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
 
   explicit KOReaderSyncActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& epubPath,
                                 CrossPointPosition localPosition, SavedProgressPosition localKoPos,
-                                std::string localChapterName, bool pluginEventsOnly = false,
-                                Mode mode = Mode::Manual);
+                                std::string localChapterName, bool pluginEventsOnly = false, Mode mode = Mode::Manual);
 
   // True once after an AutoOpen session ends, so the reader it reopens does not sync again.
   static bool takeSkipNextAutoOpen();
@@ -112,6 +115,8 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
   bool autoDeadlineExpired(const char* stage) const;
   // Caps the next request's waits to the session time left; false when too little is left to try.
   bool armAutoRequest(const char* stage) const;
+  // False when the time budget ran out before the request.
+  bool pullProgressOnly(syncEngine::Pull& pull) const;
 
   // The UiAppHost app hosts the interactive states (SHOWING_RESULT compare
   // rows and the NO_REMOTE_PROGRESS upload prompt) so they get themed

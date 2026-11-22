@@ -33,9 +33,8 @@ struct Pull {
 
 // Syncs the extensions, then fetches remote progress. Bookmarks and reading
 // sessions are best effort; what was not sent stays queued on the SD card.
-// withExtensions false fetches progress only, leaving the extensions for a later sync.
 // C3 callers hold a FrameBufferLoan with rendering locked until this returns.
-Pull pull(const std::string& bookPath, bool smartSync, bool withExtensions = true);
+Pull pull(const std::string& bookPath, bool smartSync);
 
 // Uploads the position the user or smart sync chose.
 KOReaderSyncClient::Error push(const KOReaderProgress& progress);

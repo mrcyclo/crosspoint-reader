@@ -129,6 +129,17 @@ bool KOReaderSyncActivity::armAutoRequest(const char* stage) const {
   return true;
 }
 
+// AutoOpen sends a single GET: no sync extensions and no alternate lookup, which would cost another TLS
+// request on every open. The request timeout is armed after hashing so the session stays within its budget.
+bool KOReaderSyncActivity::pullProgressOnly(syncEngine::Pull& pull) const {
+  pull.documentHash = syncEngine::documentId(epubPath);
+  if (pull.documentHash.empty()) return true;
+  if (!armAutoRequest("GET")) return false;
+
+  pull.result = KOReaderSyncClient::getProgress(pull.documentHash, pull.remote);
+  return true;
+}
+
 void KOReaderSyncActivity::startAutoOpen() {
   deadline.emplace(millis(), autosync::SESSION_BUDGET_MS);
   {
@@ -217,20 +228,22 @@ void KOReaderSyncActivity::performSync() {
   }
   requestUpdateAndWait();
 
-  if (!armAutoRequest("GET")) {
-    returnToReader();
-    return;
-  }
-
-  // AutoOpen sends a single GET: no extensions and no alternate lookup, which would cost another TLS
-  // request on every open. Manual sync does both.
   syncEngine::Pull pull;
+  bool withinBudget = true;
   {
 #if defined(CONFIG_IDF_TARGET_ESP32C3) && CONFIG_IDF_TARGET_ESP32C3
     RenderLock lock;
     GfxRenderer::FrameBufferLoan loan(renderer);
 #endif
-    pull = syncEngine::pull(epubPath, smartSyncEnabled() && !isAuto(), !isAuto());
+    if (isAuto()) {
+      withinBudget = pullProgressOnly(pull);
+    } else {
+      pull = syncEngine::pull(epubPath, smartSyncEnabled());
+    }
+  }
+  if (!withinBudget) {
+    returnToReader();
+    return;
   }
   documentHash = pull.documentHash;
   if (documentHash.empty() || !pull.extensionsSynced) {
