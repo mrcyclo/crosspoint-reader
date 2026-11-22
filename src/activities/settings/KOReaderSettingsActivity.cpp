@@ -27,7 +27,7 @@ constexpr int IDX_MATCH_METHOD = 6;
 constexpr int IDX_SEND_METADATA = 7;
 constexpr int IDX_SYNC_BEHAVIOR = 8;
 constexpr int IDX_SYNC_CLIPPINGS = 9;
-constexpr int IDX_AUTO_SYNC = 10;
+constexpr int IDX_SYNC_ON_OPEN = 10;
 constexpr int IDX_SYNC_ON_SLEEP = 11;
 constexpr int IDX_SIGN_UP = 12;
 constexpr int IDX_AUTHENTICATE = 13;
@@ -35,7 +35,7 @@ constexpr int IDX_AUTHENTICATE = 13;
 constexpr StrId menuNames[KOReaderSettingsActivity::MENU_ITEMS] = {
     StrId::STR_USERNAME,        StrId::STR_PASSWORD,        StrId::STR_SYNC_SERVER_URL,   StrId::STR_SERVER_TYPE,
     StrId::STR_CUSTOM_HEADER_1, StrId::STR_CUSTOM_HEADER_2, StrId::STR_DOCUMENT_MATCHING, StrId::STR_SEND_METADATA,
-    StrId::STR_SYNC_BEHAVIOR,   StrId::STR_SYNC_CLIPPINGS,  StrId::STR_AUTO_SYNC,         StrId::STR_SYNC_ON_SLEEP,
+    StrId::STR_SYNC_BEHAVIOR,   StrId::STR_SYNC_CLIPPINGS,  StrId::STR_SYNC_ON_OPEN,      StrId::STR_SYNC_ON_SLEEP,
     StrId::STR_SIGN_UP,         StrId::STR_AUTHENTICATE};
 
 constexpr int SERVER_TYPE_ITEMS = 3;
@@ -144,8 +144,8 @@ void KOReaderSettingsActivity::activateIndex(const int index) {
     KOREADER_STORE.setSyncBehavior(newBehavior);
     KOREADER_STORE.saveToFile();
     requestUpdate();
-  } else if (index == IDX_AUTO_SYNC) {
-    KOREADER_STORE.setAutoSync(!KOREADER_STORE.getAutoSync());
+  } else if (index == IDX_SYNC_ON_OPEN) {
+    KOREADER_STORE.setSyncOnOpen(!KOREADER_STORE.getSyncOnOpen());
     KOREADER_STORE.saveToFile();
     requestUpdate();
   } else if (index == IDX_SYNC_CLIPPINGS) {
@@ -204,7 +204,7 @@ void KOReaderSettingsActivity::buildScreen(UiScreen& screen) {
     } else if (i == IDX_MATCH_METHOD) {
       rowValues_[i] =
           KOREADER_STORE.getMatchMethod() == DocumentMatchMethod::FILENAME ? tr(STR_FILENAME) : tr(STR_BINARY);
-    } else if (i == IDX_SEND_METADATA || i == IDX_SYNC_CLIPPINGS || i == IDX_AUTO_SYNC || i == IDX_SYNC_ON_SLEEP) {
+    } else if (i == IDX_SEND_METADATA || i == IDX_SYNC_CLIPPINGS || i == IDX_SYNC_ON_OPEN || i == IDX_SYNC_ON_SLEEP) {
       rowValues_[i].clear();
     } else if (i == IDX_SYNC_BEHAVIOR) {
       rowValues_[i] =
@@ -215,7 +215,7 @@ void KOReaderSettingsActivity::buildScreen(UiScreen& screen) {
     rowItems_[i].value = rowValues_[i].empty() ? nullptr : rowValues_[i].c_str();
   }
   GUI.setCheckboxRow(rowItems_[IDX_SEND_METADATA], KOREADER_STORE.getSendMetadata());
-  GUI.setCheckboxRow(rowItems_[IDX_AUTO_SYNC], KOREADER_STORE.getAutoSync());
+  GUI.setCheckboxRow(rowItems_[IDX_SYNC_ON_OPEN], KOREADER_STORE.getSyncOnOpen());
   GUI.setCheckboxRow(rowItems_[IDX_SYNC_CLIPPINGS], KOREADER_STORE.getSyncClippings());
   GUI.setCheckboxRow(rowItems_[IDX_SYNC_ON_SLEEP], KOREADER_STORE.getSyncOnSleep());
 

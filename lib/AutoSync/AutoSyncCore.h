@@ -19,7 +19,7 @@ class Deadline {
 };
 
 struct OpenContext {
-  bool autoSyncEnabled;
+  bool syncOnOpenEnabled;
   bool hasCredentials;
   bool silentBoot;
   bool isEpub;

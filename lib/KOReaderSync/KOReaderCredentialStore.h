@@ -49,7 +49,7 @@ class KOReaderCredentialStore : public PersistableStore<KOReaderCredentialStore>
   bool syncOnSleep = false;                                         // Sync the open book when the device sleeps
   KOReaderSyncBehavior syncBehavior = KOReaderSyncBehavior::SMART;
   KOReaderServerType serverType = KOReaderServerType::CROSSPOINT;
-  bool autoSync = false;
+  bool syncOnOpen = false;
 
   // Fixed-size to avoid vector growth on the settings edit path; an empty
   // name marks an unused slot.
@@ -113,8 +113,8 @@ class KOReaderCredentialStore : public PersistableStore<KOReaderCredentialStore>
   void setSyncBehavior(KOReaderSyncBehavior behavior);
   KOReaderSyncBehavior getSyncBehavior() const { return syncBehavior; }
 
-  void setAutoSync(bool enabled) { autoSync = enabled; }
-  bool getAutoSync() const { return autoSync; }
+  void setSyncOnOpen(bool enabled) { syncOnOpen = enabled; }
+  bool getSyncOnOpen() const { return syncOnOpen; }
 
   // Custom headers sent with every sync request (index must be < MAX_CUSTOM_HEADERS)
   void setCustomHeader(size_t index, const std::string& name, const std::string& value);

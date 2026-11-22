@@ -30,7 +30,7 @@ void KOReaderCredentialStore::toJson(JsonDocument& doc) const {
   doc["syncClippings"] = getSyncClippings();
   doc["syncOnSleep"] = getSyncOnSleep();
   doc["syncBehavior"] = static_cast<uint8_t>(getSyncBehavior());
-  doc["autoSync"] = getAutoSync();
+  doc["syncOnOpen"] = getSyncOnOpen();
   JsonArray headers = doc["headers"].to<JsonArray>();
   for (const auto& header : customHeaders) {
     JsonObject headerObj = headers.add<JsonObject>();
@@ -88,7 +88,7 @@ bool KOReaderCredentialStore::fromJson(JsonVariantConst doc) {
   }
   setSendMetadata(doc["sendMetadata"] | false);
   setSyncClippings(doc["syncClippings"] | false);
-  setAutoSync(doc["autoSync"] | false);
+  setSyncOnOpen(doc["syncOnOpen"] | false);
   setSyncOnSleep(doc["syncOnSleep"] | false);
 
   size_t headerIndex = 0;

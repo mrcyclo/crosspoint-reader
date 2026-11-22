@@ -1424,12 +1424,8 @@ unsigned long EpubReaderActivity::confirmLongPressThreshold() const {
 
 bool EpubReaderActivity::autoOpenSyncExpected() const {
   if (KOReaderSyncActivity::skipNextAutoOpenPending()) return false;
-  const autosync::OpenContext context{
-      KOREADER_STORE.getAutoSync(),
-      KOREADER_STORE.hasCredentials(),
-      bootWasSilentRestartToReader(),
-      true
-  };
+  const autosync::OpenContext context{KOREADER_STORE.getSyncOnOpen(), KOREADER_STORE.hasCredentials(),
+                                      bootWasSilentRestartToReader(), true};
   return autosync::shouldSyncOnOpen(context);
 }
 
@@ -1440,7 +1436,8 @@ bool EpubReaderActivity::startAutoOpenSync() {
   clearBootWasSilentRestartToReader();
   if (returningFromAutoOpen) return false;
 
-  const autosync::OpenContext context{KOREADER_STORE.getAutoSync(), KOREADER_STORE.hasCredentials(), silentBoot, true};
+  const autosync::OpenContext context{KOREADER_STORE.getSyncOnOpen(), KOREADER_STORE.hasCredentials(), silentBoot,
+                                      true};
   if (!autosync::shouldSyncOnOpen(context)) return false;
 
   return launchKOReaderSync(KOReaderSyncActivity::Mode::AutoOpen);
@@ -1503,15 +1500,7 @@ bool EpubReaderActivity::launchKOReaderSync(const KOReaderSyncActivity::Mode mod
   LOG_DBG("KOSync", "Epub released (heap after: %u)", (unsigned)ESP.getFreeHeap());
 
   activityManager.replaceActivity(std::make_unique<KOReaderSyncActivity>(
-      renderer,
-      mappedInput,
-      savedEpubPath,
-      localPos,
-      std::move(localKoPos),
-      std::move(localChapterName),
-      false,
-      mode
-  ));
+      renderer, mappedInput, savedEpubPath, localPos, std::move(localKoPos), std::move(localChapterName), false, mode));
   return true;
 }
 
