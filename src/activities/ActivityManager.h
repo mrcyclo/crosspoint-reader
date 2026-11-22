@@ -54,6 +54,11 @@ class ActivityManager {
   TaskHandle_t renderTaskHandle = nullptr;
   static void renderTaskTrampoline(void* param);
   [[noreturn]] virtual void renderTaskLoop();
+  // UI anti-aliasing: re-renders the settled screen into both gray planes, with
+  // only 2-bit glyphs writing, and shows them over the B/W paint.
+  bool uiGrayPassWanted() const;
+  bool renderPending() const;
+  void renderUiGrayPass();
 
   // Set by requestUpdateAndWait(); read and cleared by the render task after render completes.
   // Note: only one waiting task is supported at a time

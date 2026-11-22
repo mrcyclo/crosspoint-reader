@@ -76,8 +76,17 @@ void ActivityManager::renderTaskTrampoline(void* param) {
 }
 
 void ActivityManager::renderTaskLoop() {
+  // The gray pass follows the B/W paint at once, unless a render requested
+  // meanwhile is pending: that one runs first, so held buttons skip the grays.
+  constexpr TickType_t UI_GRAY_PASS_DELAY = 0;
+  TickType_t wait = portMAX_DELAY;
   while (true) {
-    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    if (ulTaskNotifyTake(pdTRUE, wait) == 0) {
+      wait = portMAX_DELAY;
+      renderUiGrayPass();
+      continue;
+    }
+    bool grayPassDue = false;
     // Acquire the lock before reading currentActivity to avoid a TOCTOU race
     // where the main task deletes the activity between the null-check and render().
     RenderLock lock;
@@ -87,9 +96,11 @@ void ActivityManager::renderTaskLoop() {
       // The sleep screen forces normal polarity itself (SleepActivity).
       display.setInverted(SETTINGS.screenInverted != 0);
       const uint32_t renderingVisit = screenVisit;
+      grayPassDue = uiGrayPassWanted();
       currentActivity->render(std::move(lock));
       paintedVisit.store(renderingVisit, std::memory_order_release);
     }
+    wait = grayPassDue ? UI_GRAY_PASS_DELAY : portMAX_DELAY;
     // Notify any task blocked in requestUpdateAndWait() that the render is done.
     TaskHandle_t waiter = nullptr;
     taskENTER_CRITICAL(&activityManagerSpinlock);
@@ -100,6 +111,54 @@ void ActivityManager::renderTaskLoop() {
       xTaskNotify(waiter, 1, eIncrement);
     }
   }
+}
+
+bool ActivityManager::uiGrayPassWanted() const {
+  // Night mode inverts the B/W output; the gray planes are not inverted with it.
+  // Picco only: the Sticky's SSD2677 path does not re-drive gray pixels after a
+  // plain B/W frame, so repeated passes would keep lightening static text.
+  return BoardConfig::isPicco() && SETTINGS.uiAntiAliasing && !SETTINGS.screenInverted && currentActivity &&
+         currentActivity->wantsUiGrayPass();
+}
+
+bool ActivityManager::renderPending() const {
+  // Input queues state for the next render before its notification is sent.
+  return requestedUpdate.load() || ulTaskNotifyValueClear(nullptr, 0) != 0;
+}
+
+void ActivityManager::renderUiGrayPass() {
+  RenderLock lock;
+  const bool screenPainted = paintedVisit.load(std::memory_order_acquire) == screenVisit;
+  if (!uiGrayPassWanted() || !screenPainted || renderPending()) return;
+
+  HalPowerManager::Lock powerLock;
+  const auto start = millis();
+  if (!renderer.storeBwBuffer()) return;
+  // Planes rendered from a newer state than the glass would gray the wrong rows,
+  // so the pass gives way to any render queued while it runs. Checked before each
+  // upload: the MSB upload powers the panel on.
+  bool superseded = false;
+  for (const auto mode : {GfxRenderer::GRAYSCALE_LSB, GfxRenderer::GRAYSCALE_MSB}) {
+    renderer.clearScreen(0x00);
+    renderer.setRenderMode(mode);
+    renderer.beginGlyphCapture();
+    // The screen's own render, with only its 2-bit glyphs writing (no fills, no display).
+    currentActivity->render(std::move(lock));
+    renderer.endGlyphCapture();
+    superseded = renderPending();
+    if (superseded) break;
+    if (mode == GfxRenderer::GRAYSCALE_LSB) {
+      renderer.copyGrayscaleLsbBuffers();
+    } else {
+      renderer.copyGrayscaleMsbBuffers();
+    }
+  }
+  if (!superseded) {
+    renderer.displayGrayBuffer();
+  }
+  renderer.setRenderMode(GfxRenderer::BW);
+  renderer.restoreBwBuffer();
+  LOG_DBG("ACT", "UI gray pass: %lu ms%s", millis() - start, superseded ? " (superseded)" : "");
 }
 
 void ActivityManager::loop() {

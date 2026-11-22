@@ -206,6 +206,9 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
       StrId::STR_TIME_TO_SLEEP, &CrossPointSettings::sleepTimeoutMinutes,
       {CrossPointSettings::MIN_SLEEP_TIMEOUT_MINUTES, CrossPointSettings::MAX_SLEEP_TIMEOUT_MINUTES, 1},
       "sleepTimeoutMinutes", StrId::STR_CAT_SYSTEM));
+  // Display rows, listed after Time to sleep (shown in Display) so they end that section.
+  emit(SettingInfo::Toggle(StrId::STR_UI_ANTI_ALIASING, &CrossPointSettings::uiAntiAliasing, "uiAntiAliasing",
+                           StrId::STR_CAT_DISPLAY));
   emit(SettingInfo::Toggle(StrId::STR_SHOW_HIDDEN_FILES, &CrossPointSettings::showHiddenFiles, "showHiddenFiles",
                            StrId::STR_CAT_SYSTEM));
   emit(SettingInfo::Toggle(StrId::STR_SHOW_FILE_EXTENSIONS, &CrossPointSettings::showFileExtensions,
