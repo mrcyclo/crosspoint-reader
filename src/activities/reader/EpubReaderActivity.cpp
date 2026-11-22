@@ -62,6 +62,7 @@
 #include "fontIds.h"
 #include "sync/AutoSyncMarkerStore.h"
 #include "sync/SleepSync.h"
+#include "sync/SyncEngine.h"
 #include "util/BookmarkUtil.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
@@ -179,9 +180,10 @@ void moveFinishedBookToReadFolder(const std::string& srcPath, const std::string&
     return;
   }
 
-  // Protected-book sidecars travel with the book; a protected book separated
-  // from its key no longer opens, so a failed move rolls everything back.
-  static constexpr const char* SIDECARS[] = {".key", ".rights"};
+  // Sidecars travel with the book: a protected book separated from its key no
+  // longer opens, and sync reads the plugin metadata next to the book. A failed
+  // move rolls everything back.
+  static constexpr const char* SIDECARS[] = {".key", ".rights", ".meta.json"};
   for (size_t i = 0; i < std::size(SIDECARS); i++) {
     const std::string from = srcPath + SIDECARS[i];
     if (!Storage.exists(from.c_str())) continue;
@@ -206,7 +208,17 @@ void moveFinishedBookToReadFolder(const std::string& srcPath, const std::string&
     }
   }
 
+  // Bookmarks are stored under the book's path. Like the cache, a failed move
+  // is not fatal: the book is already in place.
+  const std::string oldBookmarkPath = BookmarkUtil::getBookmarkPath(srcPath);
+  const std::string newBookmarkPath = BookmarkUtil::getBookmarkPath(dstPath);
+  if (Storage.exists(oldBookmarkPath.c_str()) &&
+      (Storage.exists(newBookmarkPath.c_str()) || !Storage.rename(oldBookmarkPath.c_str(), newBookmarkPath.c_str()))) {
+    LOG_ERR("ERS", "Failed to move bookmarks %s -> %s (non-fatal)", oldBookmarkPath.c_str(), newBookmarkPath.c_str());
+  }
+
   RECENT_BOOKS.updatePath(srcPath, dstPath, oldCachePath, cacheMoved ? newCachePath : oldCachePath);
+  syncEngine::sleepBookMoved(srcPath, dstPath);
   if (APP_STATE.openEpubPath == srcPath) {
     APP_STATE.openEpubPath = dstPath;
     APP_STATE.saveToFile();
@@ -1459,11 +1471,6 @@ FrameCopy copyFrame(const GfxRenderer& renderer) {
 }
 
 }  // namespace
-
-void EpubReaderActivity::prepareForSleep() {
-  ReaderActivity::prepareForSleep();
-  syncProgressBeforeSleep();
-}
 
 CrossPointPosition EpubReaderActivity::endOfBookPosition() const {
   // Without the last chapter's layout, page 1 of 2 still maps to the end of that chapter.
@@ -3576,6 +3583,21 @@ void EpubReaderActivity::restoreSavedPosition() {
     section.reset();
   }
   requestUpdate();
+}
+
+void EpubReaderActivity::prepareForSleep() {
+  ReaderActivity::prepareForSleep();
+  if (!epub || !KOREADER_STORE.getSyncOnSleep() || !KOREADER_STORE.hasCredentials()) return;
+  // Sync On Sleep runs after this activity is gone, so hand over the position now.
+  // ActivityManager already holds the render lock here; taking it again would deadlock.
+  CrossPointPosition position = getCurrentPosition();
+  if (isAtEndOfBook() && epub->getSpineItemsCount() > 0) {
+    // The finished screen sits one past the last chapter, which has no size or XPath.
+    // Hand over the end of the last chapter instead.
+    position = {epub->getSpineItemsCount() - 1, 1, 2};
+    position.hasResolvedSpineIndex = true;
+  }
+  syncEngine::noteSleepBook(epub->getPath(), position);
 }
 
 void EpubReaderActivity::loadCachedBookmarks() {
