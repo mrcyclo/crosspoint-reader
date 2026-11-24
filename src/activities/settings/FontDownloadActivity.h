@@ -33,8 +33,6 @@ class FontDownloadActivity final : public UiListActivity {
   void onEnter() override;
   void onExit() override;
   void render(RenderLock&&) override;
-  // Loading and download screens repaint while network work runs; only the lists get a gray pass.
-  bool wantsUiGrayPass() const override { return state_ == GROUP_LIST || state_ == FAMILY_LIST; }
   bool preventAutoSleep() override {
     return state_ == LOADING_MANIFEST || state_ == DOWNLOADING ||
            // The download is synchronous and blocks the main loop until it
