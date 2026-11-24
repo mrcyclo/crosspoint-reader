@@ -251,6 +251,7 @@ bool LibrarySyncActivity::downloadBook(const Job& job) {
 
   // SD font caches can hold tens of KB the TLS session needs; they repopulate on demand.
   if (auto* fcm = renderer.getFontCacheManager()) {
+    RenderLock lock(*this);  // the progress repaint may still be drawing with these caches
     fcm->releaseSdFontCaches();
   }
   if (ESP.getFreeHeap() < HttpDownloader::MIN_TLS_FREE_HEAP
