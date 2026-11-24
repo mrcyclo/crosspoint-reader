@@ -311,9 +311,6 @@ inline bool isHiddenOnDevice(const SettingInfo& s) {
       return slideSwitchOwns(CrossPointSettings::SLIDE_SWITCH_NIGHT_MODE);
     case StrId::STR_TOUCH_READER_CONTROLS:
       return slideSwitchOwns(CrossPointSettings::SLIDE_SWITCH_TOUCH_CONTROLS);
-    // UI anti-aliasing is checked only on the Picco panel (ActivityManager::uiGrayPassWanted).
-    case StrId::STR_UI_ANTI_ALIASING:
-      return !BoardConfig::isPicco();
     // Tilt page turn needs an IMU with a gyroscope. A failed probe on one boot
     // must not drop the saved value.
     case StrId::STR_TILT_PAGE_TURN:

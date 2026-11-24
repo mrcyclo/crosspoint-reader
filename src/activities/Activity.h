@@ -49,11 +49,6 @@ class Activity {
   // transitions so no filesystem code races a raw SD-card owner.
   virtual bool requiresExclusiveStorageLoop() const { return false; }
   virtual bool isReaderActivity() const { return false; }
-  // True when running render() again redraws the screen just painted, so UI
-  // anti-aliasing can take its gray planes from it (ActivityManager). That
-  // render runs in glyph capture: only 2-bit black glyphs write and display
-  // calls are skipped. Screens whose render starts work or shows progress opt out.
-  virtual bool wantsUiGrayPass() const { return false; }
   virtual bool acceptsRemoteInput() const { return false; }
   // Returns true when the activity schedules its own forced refresh.
   virtual bool handleForcedRefresh() { return false; }

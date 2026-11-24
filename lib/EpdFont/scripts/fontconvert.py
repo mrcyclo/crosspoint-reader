@@ -4,7 +4,6 @@ import sys
 import re
 import math
 import argparse
-import unicodedata
 from collections import namedtuple
 
 # Force UTF-8 stdout so that `python fontconvert.py … > foo.h` on Windows
@@ -26,7 +25,6 @@ parser.add_argument("--compress", dest="compress", action="store_true", help="Co
 parser.add_argument("--zopfli", dest="zopfli", action="store_true", help="Use Zopfli for the DEFLATE backend instead of zlib. Produces standard raw-DEFLATE streams (decoded unchanged by the on-device uzlib inflater), typically a few percent smaller than zlib -9, at the cost of much slower compression. Requires --compress and the 'zopfli' package.")
 parser.add_argument("--glyph-x-nudge", dest="glyph_x_nudges", action="append", default=[], metavar="CODEPOINT,DX", help="Shift one glyph's outline DX/64 px sideways before rasterising (repeatable). For a stem that straddles a pixel boundary: in 1-bit mode both of its faint edge pixels turn black and the stem comes out a pixel too wide.")
 parser.add_argument("--force-autohint", dest="force_autohint", action="store_true", help="Force FreeType auto-hinter instead of native font hinting. Improves stem width consistency for fonts with weak or no native TrueType hints.")
-parser.add_argument("--native-hint-mark", dest="native_hint_marks", action="append", default=[], metavar="CODEPOINT", help="With --force-autohint, keep native hinting for glyphs whose decomposition contains this combining mark (repeatable). At UI sizes the auto-hinter flattens a tilde (0x0303) or a stacked breve (0x0306) into a straight bar.")
 parser.add_argument("--pnum", dest="pnum", action="store_true", help="Use proportional numerals (pnum OpenType feature) instead of default tabular figures. Reduces visual gaps between digits in running prose.")
 args = parser.parse_args()
 
@@ -270,16 +268,6 @@ for spec in args.glyph_x_nudges:
     cp, dx = spec.split(",")
     glyph_x_nudges[int(cp, 0)] = int(dx, 0)
 
-native_hint_marks = {chr(int(mark, 0)) for mark in args.native_hint_marks}
-
-def glyph_load_flags(code_point):
-    if not native_hint_marks:
-        return load_flags
-    # NFKD also catches spacing forms such as U+02DC SMALL TILDE.
-    if native_hint_marks.isdisjoint(unicodedata.normalize("NFKD", chr(code_point))):
-        return load_flags
-    return load_flags & ~freetype.FT_LOAD_FORCE_AUTOHINT
-
 def load_glyph(code_point):
     face_index = 0
     while face_index < len(font_stack):
@@ -288,17 +276,16 @@ def load_glyph(code_point):
         if glyph_index is None:
             glyph_index = face.get_char_index(code_point)
         if glyph_index > 0:
-            flags = glyph_load_flags(code_point)
             nudge = glyph_x_nudges.get(code_point)
             if nudge:
                 # NO_BITMAP: an embedded bitmap strike has no outline to shift.
-                face.load_glyph(glyph_index, (flags & ~freetype.FT_LOAD_RENDER) | freetype.FT_LOAD_NO_BITMAP)
+                face.load_glyph(glyph_index, (load_flags & ~freetype.FT_LOAD_RENDER) | freetype.FT_LOAD_NO_BITMAP)
                 if face.glyph.format != freetype.FT_GLYPH_FORMAT_OUTLINE:
                     sys.exit(f"--glyph-x-nudge: U+{code_point:04X} has no outline to shift")
                 freetype.FT_Outline_Translate(ctypes.byref(face.glyph.outline._FT_Outline), nudge, 0)
                 face.glyph.render(freetype.FT_RENDER_MODE_NORMAL)
             else:
-                face.load_glyph(glyph_index, flags)
+                face.load_glyph(glyph_index, load_flags)
             return face
         face_index += 1
     return None
