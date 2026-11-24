@@ -623,8 +623,6 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
 void GfxRenderer::drawGlyphBitmap(const uint8_t* bitmap, const int width, const int height,
                                   const glyphBitmap::Frame& frame, const bool twoBit, const RenderMode mode,
                                   const bool state) const {
-  // Paper-coloured text would get the gray of black text: the planes ignore `state`.
-  if (glyphCapture_ && (!twoBit || !state)) return;
   // Apply the logical clip rectangle before rotating, in glyph-local pixels.
   glyphBitmap::Clip clip{0, 0, width, height};
   glyphBitmap::clipToRect(frame, clipLeft_, clipTop_, clipRight_, clipBottom_, clip);
@@ -654,7 +652,7 @@ void GfxRenderer::drawGlyphBitmap(const uint8_t* bitmap, const int width, const 
 // IMPORTANT: This function is in critical rendering path and is called for every pixel. Please keep it as simple and
 // efficient as possible.
 void GfxRenderer::drawPixel(const int x, const int y, const bool state) const {
-  if (x < clipLeft_ || y < clipTop_ || x >= clipRight_ || y >= clipBottom_ || glyphCapture_) return;
+  if (x < clipLeft_ || y < clipTop_ || x >= clipRight_ || y >= clipBottom_) return;
   int phyX = 0;
   int phyY = 0;
 
@@ -1147,7 +1145,7 @@ template <Color C>
 void GfxRenderer::fillRectImpl(const int x, const int y, const int width, const int height,
                                const DitherMode mode) const {
   if constexpr (C == Color::Clear) return;
-  if (width <= 0 || height <= 0 || glyphCapture_) return;
+  if (width <= 0 || height <= 0) return;
   if (fontCacheManager_ && fontCacheManager_->isScanning()) return;
 
   // Clip in logical space.
@@ -1472,7 +1470,6 @@ void GfxRenderer::fillRoundedRect(const int x, const int y, const int width, con
 }
 
 void GfxRenderer::drawImage(const uint8_t bitmap[], const int x, const int y, const int width, const int height) const {
-  if (glyphCapture_) return;
   int rotatedX = 0;
   int rotatedY = 0;
   rotateCoordinates(orientation, x, y, &rotatedX, &rotatedY, panelWidth, panelHeight);
@@ -1805,7 +1802,6 @@ void GfxRenderer::fillPolygon(const int* xPoints, const int* yPoints, int numPoi
 static unsigned long start_ms = 0;
 
 void GfxRenderer::clearScreen(const uint8_t color) const {
-  if (glyphCapture_) return;
   start_ms = millis();
   if (_stripActive) {
     // Clear only the active band's scratch, not the shared framebuffer.
@@ -1849,7 +1845,6 @@ bool GfxRenderer::glyphIntersectsStrip(int x0, int y0, int x1, int y1) const {
 }
 
 void GfxRenderer::invertScreen() const {
-  if (glyphCapture_) return;
   for (uint32_t i = 0; i < frameBufferSize; i++) {
     frameBuffer[i] = ~frameBuffer[i];
   }
@@ -1862,7 +1857,6 @@ HalDisplay::RefreshMode GfxRenderer::applyPromotedRefresh(const HalDisplay::Refr
 }
 
 void GfxRenderer::displayBuffer(HalDisplay::RefreshMode refreshMode) const {
-  if (glyphCapture_) return;
   auto elapsed = millis() - start_ms;
   LOG_DBG("GFX", "Time = %lu ms from clearScreen to displayBuffer", elapsed);
   refreshMode = applyPromotedRefresh(refreshMode);
@@ -1870,7 +1864,6 @@ void GfxRenderer::displayBuffer(HalDisplay::RefreshMode refreshMode) const {
 }
 
 void GfxRenderer::displayBufferAsync(HalDisplay::RefreshMode refreshMode) const {
-  if (glyphCapture_) return;
   refreshMode = applyPromotedRefresh(refreshMode);
   // The async path has no turn-off-screen hook, which the sunlight fading fix
   // relies on; keep those users on the blocking path.
@@ -1910,7 +1903,7 @@ size_t GfxRenderer::readFramebufferRegion(int x, int y, int w, int h, uint8_t* d
 }
 
 void GfxRenderer::writeFramebufferRegion(int x, int y, int w, int h, const uint8_t* src) {
-  if (src == nullptr || w <= 0 || h <= 0 || glyphCapture_) return;
+  if (src == nullptr || w <= 0 || h <= 0) return;
 
   const AlignedMemRect mem = screenRectToAlignedMemRect(orientation, x, y, w, h, panelWidth, panelHeight);
   if (!mem.valid) return;
@@ -2161,7 +2154,6 @@ bool GfxRenderer::copyRegionToBuffer(int lx, int ly, int lw, int lh, uint8_t* bu
 }
 
 bool GfxRenderer::copyBufferToRegion(int lx, int ly, int lw, int lh, const uint8_t* buf, size_t bufSize) const {
-  if (glyphCapture_) return false;
   int x0, y0, x1, y1;
   if (!logicalRectToPhysicalBounds(orientation, lx, ly, lw, lh, panelWidth, panelHeight, &x0, &y0, &x1, &y1)) {
     return false;
