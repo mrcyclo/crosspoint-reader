@@ -19,11 +19,6 @@ done
 
 UI_FONT_SIZES=(10 12)
 UI_FONT_STYLES=("Regular" "Bold")
-# UI fonts are 1-bit. Native hinting leaves stems at fractional pixel offsets, so the ink
-# threshold prints the same stem a pixel wider or narrower; the auto-hinter snaps stem widths
-# to whole pixels. It also flattens a tilde or a stacked breve into a bar, so glyphs with
-# those marks keep native hinting.
-UI_HINTING=(--force-autohint --native-hint-mark 0x0303 --native-hint-mark 0x0306)
 
 # Arabic glyphs for UI text (menus, file browser titles). The built-in fonts
 # must cover the *output* of MiniBidi's do_shape() — contextual presentation
@@ -69,12 +64,15 @@ for size in ${UI_FONT_SIZES[@]}; do
     viet_path="../builtinFonts/source/Ubuntu/Ubuntu-Vietnamese-${style}.ttf"
     output_path="../builtinFonts/${font_name}.h"
     python fontconvert.py $font_name $size $font_path $latin_fallback_path $hebrew_path $arabic_path $viet_path \
-      --additional-intervals 0x05D0,0x05EA "${ARABIC_INTERVALS[@]}" "${UI_HINTING[@]}" > $output_path
+      --additional-intervals 0x05D0,0x05EA "${ARABIC_INTERVALS[@]}" > $output_path
     echo "Generated $output_path"
   done
 done
 
 # The small UI face is Ubuntu too, so UI text stays in one family at every size.
+# At this size the stem of "1" sits across a pixel boundary and comes out 3 px
+# wide next to the 2 px strokes of the other digits; a quarter-pixel nudge
+# lands it on two pixels.
 python fontconvert.py ubuntu_8_regular 8 \
   ../builtinFonts/source/Ubuntu/Ubuntu-Regular.ttf \
   ../builtinFonts/source/NotoSans/NotoSans-Regular.ttf \
@@ -82,7 +80,7 @@ python fontconvert.py ubuntu_8_regular 8 \
   ../builtinFonts/source/NotoSansArabic/NotoSansArabic-Regular.ttf \
   ../builtinFonts/source/Ubuntu/Ubuntu-Vietnamese-Regular.ttf \
   --additional-intervals 0x05D0,0x05EA "${ARABIC_INTERVALS[@]}" \
-  "${UI_HINTING[@]}" > ../builtinFonts/ubuntu_8_regular.h
+  --glyph-x-nudge 0x31,16 > ../builtinFonts/ubuntu_8_regular.h
 
 echo ""
 echo "Running compression verification..."
