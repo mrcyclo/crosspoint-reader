@@ -54,7 +54,6 @@ KOReaderSyncActivity::KOReaderSyncActivity(GfxRenderer& renderer, MappedInputMan
       pluginEventsOnly(pluginEventsOnly) {}
 
 bool KOReaderSyncActivity::skipNextAutoOpen = false;
-bool KOReaderSyncActivity::autoStatusShownByReader = false;
 
 bool KOReaderSyncActivity::takeSkipNextAutoOpen() {
   const bool skip = skipNextAutoOpen;
@@ -433,11 +432,6 @@ void KOReaderSyncActivity::onEnter() {
   app.on(ACTION_ROW, &KOReaderSyncActivity::onResultRow, this);
   app.setScreen(&KOReaderSyncActivity::resultScreen, this);
 
-  if (isAuto()) {
-    autoStatusDrawn = autoStatusShownByReader;
-  }
-  autoStatusShownByReader = false;
-
   // Check for credentials first (plugin-events-only mode needs none).
   if (!pluginEventsOnly && !KOREADER_STORE.hasCredentials()) {
     state = NO_CREDENTIALS;
@@ -664,7 +658,8 @@ void KOReaderSyncActivity::renderAutoStatus() {
   const int top = screen.y + screen.height / 2 - 40;
   renderer.clearScreen();
   UITheme::drawCenteredText(renderer, screen, UI_10_FONT_ID, top, tr(STR_AUTO_SYNCING), true, EpdFontFamily::BOLD);
-  renderer.displayBuffer();
+  // The first paint after Home or the library: a fast refresh would leave their covers ghosted.
+  renderer.displayBuffer(HalDisplay::HALF_REFRESH);
 }
 
 void KOReaderSyncActivity::render(RenderLock&&) {
