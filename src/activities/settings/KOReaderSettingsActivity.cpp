@@ -1,9 +1,11 @@
 #include "KOReaderSettingsActivity.h"
 
+#include <AutoSyncCore.h>
 #include <GfxRenderer.h>
 #include <HttpHeader.h>
 #include <I18n.h>
 
+#include <cstdio>
 #include <memory>
 #include <string>
 #include <utility>
@@ -28,15 +30,16 @@ constexpr int IDX_SEND_METADATA = 7;
 constexpr int IDX_SYNC_BEHAVIOR = 8;
 constexpr int IDX_SYNC_CLIPPINGS = 9;
 constexpr int IDX_SYNC_ON_OPEN = 10;
-constexpr int IDX_SYNC_ON_SLEEP = 11;
-constexpr int IDX_SIGN_UP = 12;
-constexpr int IDX_AUTHENTICATE = 13;
+constexpr int IDX_SYNC_ON_OPEN_SKIP = 11;
+constexpr int IDX_SYNC_ON_SLEEP = 12;
+constexpr int IDX_SIGN_UP = 13;
+constexpr int IDX_AUTHENTICATE = 14;
 
 constexpr StrId menuNames[KOReaderSettingsActivity::MENU_ITEMS] = {
     StrId::STR_USERNAME,        StrId::STR_PASSWORD,        StrId::STR_SYNC_SERVER_URL,   StrId::STR_SERVER_TYPE,
     StrId::STR_CUSTOM_HEADER_1, StrId::STR_CUSTOM_HEADER_2, StrId::STR_DOCUMENT_MATCHING, StrId::STR_SEND_METADATA,
-    StrId::STR_SYNC_BEHAVIOR,   StrId::STR_SYNC_CLIPPINGS,  StrId::STR_SYNC_ON_OPEN,      StrId::STR_SYNC_ON_SLEEP,
-    StrId::STR_SIGN_UP,         StrId::STR_AUTHENTICATE};
+    StrId::STR_SYNC_BEHAVIOR,   StrId::STR_SYNC_CLIPPINGS,  StrId::STR_SYNC_ON_OPEN,      StrId::STR_SYNC_AGAIN_AFTER,
+    StrId::STR_SYNC_ON_SLEEP,   StrId::STR_SIGN_UP,         StrId::STR_AUTHENTICATE};
 
 constexpr int SERVER_TYPE_ITEMS = 3;
 constexpr StrId serverTypeNames[SERVER_TYPE_ITEMS] = {StrId::STR_CROSSPOINT, StrId::STR_KOSYNC_SERVER,
@@ -152,6 +155,10 @@ void KOReaderSettingsActivity::activateIndex(const int index) {
     KOREADER_STORE.setSyncOnOpen(!KOREADER_STORE.getSyncOnOpen());
     KOREADER_STORE.saveToFile();
     requestUpdate();
+  } else if (index == IDX_SYNC_ON_OPEN_SKIP) {
+    KOREADER_STORE.setSyncOnOpenSkipMinutes(autosync::nextSkipMinutes(KOREADER_STORE.getSyncOnOpenSkipMinutes()));
+    KOREADER_STORE.saveToFile();
+    requestUpdate();
   } else if (index == IDX_SYNC_ON_SLEEP) {
     KOREADER_STORE.setSyncOnSleep(!KOREADER_STORE.getSyncOnSleep());
     KOREADER_STORE.saveToFile();
@@ -206,6 +213,15 @@ void KOReaderSettingsActivity::buildScreen(UiScreen& screen) {
           KOREADER_STORE.getMatchMethod() == DocumentMatchMethod::FILENAME ? tr(STR_FILENAME) : tr(STR_BINARY);
     } else if (i == IDX_SEND_METADATA || i == IDX_SYNC_CLIPPINGS || i == IDX_SYNC_ON_OPEN || i == IDX_SYNC_ON_SLEEP) {
       rowValues_[i].clear();
+    } else if (i == IDX_SYNC_ON_OPEN_SKIP) {
+      const unsigned minutes = autosync::skipWindowSeconds(KOREADER_STORE.getSyncOnOpenSkipMinutes()) / 60;
+      if (minutes == 0) {
+        rowValues_[i] = tr(STR_IMMEDIATELY);
+      } else {
+        char text[24];
+        snprintf(text, sizeof(text), tr(STR_SLEEP_TIMER_VALUE_FORMAT), minutes);
+        rowValues_[i] = text;
+      }
     } else if (i == IDX_SYNC_BEHAVIOR) {
       rowValues_[i] =
           KOREADER_STORE.getSyncBehavior() == KOReaderSyncBehavior::SMART ? tr(STR_SMART_SYNC) : tr(STR_ASK_EVERY_TIME);

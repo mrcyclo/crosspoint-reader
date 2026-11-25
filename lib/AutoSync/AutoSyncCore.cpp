@@ -2,9 +2,9 @@
 
 namespace autosync {
 
-bool readRecently(const int64_t nowEpoch, const int64_t stoppedEpoch) {
+bool readRecently(const int64_t nowEpoch, const int64_t stoppedEpoch, const uint32_t windowSeconds) {
   if (nowEpoch <= 0 || stoppedEpoch <= 0 || nowEpoch < stoppedEpoch) return false;
-  return nowEpoch - stoppedEpoch < RECENT_READ_SECONDS;
+  return nowEpoch - stoppedEpoch < windowSeconds;
 }
 
 bool shouldSyncOnOpen(const OpenContext& ctx) {
