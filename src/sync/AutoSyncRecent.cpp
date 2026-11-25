@@ -34,9 +34,9 @@ void noteReadingStopped(const std::string& bookPath) {
   lastRead.magic = LAST_READ_MAGIC;
 }
 
-bool bookReadRecently(const std::string& bookPath) {
+bool bookReadRecently(const std::string& bookPath, const uint32_t windowSeconds) {
   if (lastRead.magic != LAST_READ_MAGIC || lastRead.pathHash != pathHash(bookPath)) return false;
-  return readRecently(trustedtime::trustedNow(), lastRead.stoppedAt);
+  return readRecently(trustedtime::trustedNow(), lastRead.stoppedAt, windowSeconds);
 }
 
 }  // namespace autosync

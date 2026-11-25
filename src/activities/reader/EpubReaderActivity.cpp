@@ -1425,8 +1425,9 @@ unsigned long EpubReaderActivity::confirmLongPressThreshold() const {
 
 namespace {
 bool syncOnOpenAllowed(const bool silentBoot, const std::string& bookPath) {
-  return autosync::shouldSyncOnOpen({KOREADER_STORE.getSyncOnOpen(), KOREADER_STORE.hasCredentials(), silentBoot,
-                                     autosync::bookReadRecently(bookPath)});
+  return autosync::shouldSyncOnOpen(
+      {KOREADER_STORE.getSyncOnOpen(), KOREADER_STORE.hasCredentials(), silentBoot,
+       autosync::bookReadRecently(bookPath, autosync::skipWindowSeconds(KOREADER_STORE.getSyncOnOpenSkipMinutes()))});
 }
 }  // namespace
 

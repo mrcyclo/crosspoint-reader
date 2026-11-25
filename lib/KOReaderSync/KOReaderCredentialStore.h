@@ -50,6 +50,7 @@ class KOReaderCredentialStore : public PersistableStore<KOReaderCredentialStore>
   KOReaderSyncBehavior syncBehavior = KOReaderSyncBehavior::SMART;
   KOReaderServerType serverType = KOReaderServerType::CROSSPOINT;
   bool syncOnOpen = false;
+  uint8_t syncOnOpenSkipMinutes = 15;
 
   // Fixed-size to avoid vector growth on the settings edit path; an empty
   // name marks an unused slot.
@@ -115,6 +116,10 @@ class KOReaderCredentialStore : public PersistableStore<KOReaderCredentialStore>
 
   void setSyncOnOpen(bool enabled) { syncOnOpen = enabled; }
   bool getSyncOnOpen() const { return syncOnOpen; }
+  // Reopening the same book within this many minutes skips Sync On Open; autosync::skipWindowSeconds()
+  // maps the stored value, so an unknown one is harmless.
+  void setSyncOnOpenSkipMinutes(uint8_t minutes) { syncOnOpenSkipMinutes = minutes; }
+  uint8_t getSyncOnOpenSkipMinutes() const { return syncOnOpenSkipMinutes; }
 
   // Custom headers sent with every sync request (index must be < MAX_CUSTOM_HEADERS)
   void setCustomHeader(size_t index, const std::string& name, const std::string& value);
