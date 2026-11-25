@@ -24,11 +24,28 @@ TEST(DeadlineTest, RemainingIsZeroWhenExpired) {
   EXPECT_EQ(d.remaining(99999), 0u);
 }
 
-TEST(AutoSyncPolicyTest, SkipsOnSilentBoot) { EXPECT_FALSE(shouldSyncOnOpen({true, true, true})); }
+TEST(AutoSyncPolicyTest, SkipsOnSilentBoot) { EXPECT_FALSE(shouldSyncOnOpen({true, true, true, false})); }
 
 TEST(AutoSyncPolicyTest, SkipsWhenDisabled) {
-  EXPECT_FALSE(shouldSyncOnOpen({false, true, false}));
-  EXPECT_FALSE(shouldSyncOnOpen({true, false, false}));
+  EXPECT_FALSE(shouldSyncOnOpen({false, true, false, false}));
+  EXPECT_FALSE(shouldSyncOnOpen({true, false, false, false}));
 }
 
-TEST(AutoSyncPolicyTest, SyncsOnNormalOpen) { EXPECT_TRUE(shouldSyncOnOpen({true, true, false})); }
+TEST(AutoSyncPolicyTest, SyncsOnNormalOpen) { EXPECT_TRUE(shouldSyncOnOpen({true, true, false, false})); }
+
+TEST(AutoSyncPolicyTest, SkipsWhenReadRecently) { EXPECT_FALSE(shouldSyncOnOpen({true, true, false, true})); }
+
+TEST(RecentReadTest, InsideWindowIsRecent) {
+  EXPECT_TRUE(readRecently(1'800'000'000, 1'800'000'000));
+  EXPECT_TRUE(readRecently(1'800'000'000 + RECENT_READ_SECONDS - 1, 1'800'000'000));
+}
+
+TEST(RecentReadTest, WindowEndIsNotRecent) {
+  EXPECT_FALSE(readRecently(1'800'000'000 + RECENT_READ_SECONDS, 1'800'000'000));
+}
+
+TEST(RecentReadTest, UnknownOrBackwardClockIsNotRecent) {
+  EXPECT_FALSE(readRecently(0, 1'800'000'000));
+  EXPECT_FALSE(readRecently(1'800'000'000, 0));
+  EXPECT_FALSE(readRecently(1'800'000'000, 1'800'000'060));
+}

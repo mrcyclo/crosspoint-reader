@@ -59,6 +59,7 @@
 #include "clippings/ClippingsManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "sync/AutoSyncRecent.h"
 #include "sync/SyncEngine.h"
 #include "util/BookmarkUtil.h"
 #include "util/ButtonNavigator.h"
@@ -1423,14 +1424,20 @@ unsigned long EpubReaderActivity::confirmLongPressThreshold() const {
 }
 
 namespace {
-bool syncOnOpenAllowed(const bool silentBoot) {
-  return autosync::shouldSyncOnOpen({KOREADER_STORE.getSyncOnOpen(), KOREADER_STORE.hasCredentials(), silentBoot});
+bool syncOnOpenAllowed(const bool silentBoot, const std::string& bookPath) {
+  return autosync::shouldSyncOnOpen({KOREADER_STORE.getSyncOnOpen(), KOREADER_STORE.hasCredentials(), silentBoot,
+                                     autosync::bookReadRecently(bookPath)});
 }
 }  // namespace
 
+void EpubReaderActivity::onExit() {
+  ReaderActivity::onExit();
+  autosync::noteReadingStopped(bookPath);
+}
+
 bool EpubReaderActivity::autoOpenSyncExpected() const {
   if (KOReaderSyncActivity::skipNextAutoOpenPending()) return false;
-  return syncOnOpenAllowed(bootWasSilentRestartToReader());
+  return syncOnOpenAllowed(bootWasSilentRestartToReader(), bookPath);
 }
 
 bool EpubReaderActivity::startAutoOpenSync() {
@@ -1439,7 +1446,7 @@ bool EpubReaderActivity::startAutoOpenSync() {
   const bool returningFromAutoOpen = KOReaderSyncActivity::takeSkipNextAutoOpen();
   clearBootWasSilentRestartToReader();
   if (returningFromAutoOpen) return false;
-  if (!syncOnOpenAllowed(silentBoot)) return false;
+  if (!syncOnOpenAllowed(silentBoot, bookPath)) return false;
 
   return launchKOReaderSync(KOReaderSyncActivity::Mode::AutoOpen);
 }
