@@ -323,16 +323,13 @@ void LibraryListActivity::showRecentBookOptions(const int entry) {
                          }
                          break;
                        case 2:
-                         if (isStoreRow) {
+                         if (isStoreRow)
                            promptDeleteBookByPath(path, title);
-                         } else {
+                         else
                            promptRebuildIndex();
-                         }
                          break;
                        case 3:
-                         if (isStoreRow) {
-                           promptRebuildIndex();
-                         }
+                         if (isStoreRow) promptRebuildIndex();
                          break;
                        default:
                          break;

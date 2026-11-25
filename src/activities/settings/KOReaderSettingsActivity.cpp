@@ -144,12 +144,12 @@ void KOReaderSettingsActivity::activateIndex(const int index) {
     KOREADER_STORE.setSyncBehavior(newBehavior);
     KOREADER_STORE.saveToFile();
     requestUpdate();
-  } else if (index == IDX_SYNC_ON_OPEN) {
-    KOREADER_STORE.setSyncOnOpen(!KOREADER_STORE.getSyncOnOpen());
-    KOREADER_STORE.saveToFile();
-    requestUpdate();
   } else if (index == IDX_SYNC_CLIPPINGS) {
     KOREADER_STORE.setSyncClippings(!KOREADER_STORE.getSyncClippings());
+    KOREADER_STORE.saveToFile();
+    requestUpdate();
+  } else if (index == IDX_SYNC_ON_OPEN) {
+    KOREADER_STORE.setSyncOnOpen(!KOREADER_STORE.getSyncOnOpen());
     KOREADER_STORE.saveToFile();
     requestUpdate();
   } else if (index == IDX_SYNC_ON_SLEEP) {
@@ -215,8 +215,8 @@ void KOReaderSettingsActivity::buildScreen(UiScreen& screen) {
     rowItems_[i].value = rowValues_[i].empty() ? nullptr : rowValues_[i].c_str();
   }
   GUI.setCheckboxRow(rowItems_[IDX_SEND_METADATA], KOREADER_STORE.getSendMetadata());
-  GUI.setCheckboxRow(rowItems_[IDX_SYNC_ON_OPEN], KOREADER_STORE.getSyncOnOpen());
   GUI.setCheckboxRow(rowItems_[IDX_SYNC_CLIPPINGS], KOREADER_STORE.getSyncClippings());
+  GUI.setCheckboxRow(rowItems_[IDX_SYNC_ON_OPEN], KOREADER_STORE.getSyncOnOpen());
   GUI.setCheckboxRow(rowItems_[IDX_SYNC_ON_SLEEP], KOREADER_STORE.getSyncOnSleep());
 
   fui::ListProps props;
