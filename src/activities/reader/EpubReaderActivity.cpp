@@ -1422,11 +1422,15 @@ unsigned long EpubReaderActivity::confirmLongPressThreshold() const {
   }
 }
 
+namespace {
+bool syncOnOpenAllowed(const bool silentBoot) {
+  return autosync::shouldSyncOnOpen({KOREADER_STORE.getSyncOnOpen(), KOREADER_STORE.hasCredentials(), silentBoot});
+}
+}  // namespace
+
 bool EpubReaderActivity::autoOpenSyncExpected() const {
   if (KOReaderSyncActivity::skipNextAutoOpenPending()) return false;
-  const autosync::OpenContext context{KOREADER_STORE.getSyncOnOpen(), KOREADER_STORE.hasCredentials(),
-                                      bootWasSilentRestartToReader(), true};
-  return autosync::shouldSyncOnOpen(context);
+  return syncOnOpenAllowed(bootWasSilentRestartToReader());
 }
 
 bool EpubReaderActivity::startAutoOpenSync() {
@@ -1435,10 +1439,7 @@ bool EpubReaderActivity::startAutoOpenSync() {
   const bool returningFromAutoOpen = KOReaderSyncActivity::takeSkipNextAutoOpen();
   clearBootWasSilentRestartToReader();
   if (returningFromAutoOpen) return false;
-
-  const autosync::OpenContext context{KOREADER_STORE.getSyncOnOpen(), KOREADER_STORE.hasCredentials(), silentBoot,
-                                      true};
-  if (!autosync::shouldSyncOnOpen(context)) return false;
+  if (!syncOnOpenAllowed(silentBoot)) return false;
 
   return launchKOReaderSync(KOReaderSyncActivity::Mode::AutoOpen);
 }

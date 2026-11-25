@@ -22,7 +22,6 @@ struct OpenContext {
   bool syncOnOpenEnabled;
   bool hasCredentials;
   bool silentBoot;
-  bool isEpub;
 };
 bool shouldSyncOnOpen(const OpenContext& ctx);
 
