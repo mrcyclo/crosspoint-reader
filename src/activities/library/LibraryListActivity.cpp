@@ -1032,10 +1032,14 @@ void LibraryListActivity::buildHeader(UiScreen& screen) {
                                                fui::Rect{frameRect.x, static_cast<int16_t>(metrics.topPadding),
                                                          frameRect.width, static_cast<int16_t>(metrics.headerHeight)},
                                                header);
-  // fui::header holds two trailing buttons; Sync Books goes left of them with the same geometry.
+  // fui::header holds two trailing buttons; Sync Books goes left of them with the same geometry
+  // (12 px right inset, 4 px top inset plus actionOffsetY, 4 px gap).
+  constexpr int16_t TRAILING_EDGE = 12;
+  constexpr int16_t BUTTON_TOP = 4;
+  constexpr int16_t BUTTON_GAP = 4;
   const int16_t btn = header.trailingSize > 0 ? header.trailingSize : static_cast<int16_t>(band.height - 8);
   if (syncButton) {
-    header.rightReserve = static_cast<int16_t>(btn + 4);
+    header.rightReserve = static_cast<int16_t>(btn + BUTTON_GAP);
   }
   fui::header(screen.frame(), band, header);
   if (!syncButton) return;
@@ -1045,8 +1049,8 @@ void LibraryListActivity::buildHeader(UiScreen& screen) {
   sync.styles = header.trailingStyles;
   sync.radius = header.trailingRadius;
   sync.minTouchSize = header.minTouchSize;
-  const int16_t x = static_cast<int16_t>(band.right() - 12 - 3 * btn - 8);
-  const int16_t y = static_cast<int16_t>(band.y + 4 + header.actionOffsetY);
+  const int16_t x = static_cast<int16_t>(band.right() - TRAILING_EDGE - 3 * btn - 2 * BUTTON_GAP);
+  const int16_t y = static_cast<int16_t>(band.y + BUTTON_TOP + header.actionOffsetY);
   fui::button(screen.frame(), fui::Rect{x, y, btn, btn}, sync);
 }
 
