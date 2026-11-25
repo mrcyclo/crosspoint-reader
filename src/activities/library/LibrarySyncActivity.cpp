@@ -9,6 +9,7 @@
 #include <Logging.h>
 #include <WiFi.h>
 
+#include <algorithm>
 #include <cstdio>
 
 #include "MappedInputManager.h"
@@ -174,13 +175,7 @@ void LibrarySyncActivity::planJobs() {
       ++failed;
       continue;
     }
-    const autosync::SyncedBook* previous = nullptr;
-    for (const auto& book : synced) {
-      if (book.id == entry.id) {
-        previous = &book;
-        break;
-      }
-    }
+    const autosync::SyncedBook* previous = findSynced(entry.id);
     const std::optional<size_t> destSize = fileSize(dest);
     const bool previousExists = previous && Storage.exists(previous->path.c_str());
     const autosync::BookAction action = autosync::planBook(entry, previous, dest, destSize, previousExists);
@@ -272,23 +267,24 @@ bool LibrarySyncActivity::downloadBook(const Job& job) {
   return true;
 }
 
+autosync::SyncedBook* LibrarySyncActivity::findSynced(const std::string& id) {
+  const auto it = std::find_if(synced.begin(), synced.end(), [&](const autosync::SyncedBook& b) { return b.id == id; });
+  return it == synced.end() ? nullptr : &*it;
+}
+
 void LibrarySyncActivity::recordBook(const autosync::FeedEntry& entry, const std::string& path) {
-  for (auto& book : synced) {
-    if (book.id == entry.id) {
-      book.updated = entry.updated;
-      book.path = path;
-      return;
-    }
+  if (auto* book = findSynced(entry.id)) {
+    book->updated = entry.updated;
+    book->path = path;
+    return;
   }
   synced.push_back({entry.id, entry.updated, path});
 }
 
 void LibrarySyncActivity::forgetBook(const std::string& id) {
-  for (auto it = synced.begin(); it != synced.end(); ++it) {
-    if (it->id == id) {
-      synced.erase(it);
-      return;
-    }
+  const auto it = std::find_if(synced.begin(), synced.end(), [&](const autosync::SyncedBook& b) { return b.id == id; });
+  if (it != synced.end()) {
+    synced.erase(it);
   }
 }
 
