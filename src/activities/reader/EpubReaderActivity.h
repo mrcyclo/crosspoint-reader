@@ -269,6 +269,7 @@ class EpubReaderActivity final : public ReaderActivity {
       : ReaderActivity("EpubReader", renderer, mappedInput, std::move(bookPath), allowFastInitialRefresh) {}
   ~EpubReaderActivity() override;
 
+  void onExit() override;
   void loop() override;
   void prepareForSleep() override;
   void render(RenderLock&& lock) override;
