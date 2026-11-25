@@ -113,9 +113,8 @@ ScanResult scanVisibleNetworks(const Deadline& deadline) {
     memcpy(network.hint.bssid, WiFi.BSSID(i), sizeof(network.hint.bssid));
 #endif
     // Results come strongest first; keep that access point for an SSID seen more than once.
-    const bool seen = std::any_of(scan.networks.begin(), scan.networks.end(), [&](const VisibleNetwork& n) {
-      return n.ssid == network.ssid;
-    });
+    const bool seen = std::any_of(scan.networks.begin(), scan.networks.end(),
+                                  [&](const VisibleNetwork& n) { return n.ssid == network.ssid; });
     if (!seen) {
       scan.networks.push_back(std::move(network));
     }
@@ -127,9 +126,8 @@ ScanResult scanVisibleNetworks(const Deadline& deadline) {
 }
 
 const VisibleNetwork* findVisible(const ScanResult& scan, const std::string& ssid) {
-  const auto it = std::find_if(scan.networks.begin(), scan.networks.end(), [&](const VisibleNetwork& n) {
-    return n.ssid == ssid;
-  });
+  const auto it =
+      std::find_if(scan.networks.begin(), scan.networks.end(), [&](const VisibleNetwork& n) { return n.ssid == ssid; });
   return it == scan.networks.end() ? nullptr : &*it;
 }
 

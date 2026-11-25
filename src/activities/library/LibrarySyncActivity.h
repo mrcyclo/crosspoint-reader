@@ -54,6 +54,7 @@ class LibrarySyncActivity final : public Activity {
   void planJobs();
   void runNextJob();
   bool downloadBook(const Job& job);
+  autosync::SyncedBook* findSynced(const std::string& id);
   void recordBook(const autosync::FeedEntry& entry, const std::string& path);
   void forgetBook(const std::string& id);
   void writeState() const;

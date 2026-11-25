@@ -1,6 +1,7 @@
 #include "KOReaderSyncActivity.h"
 
 #include <GfxRenderer.h>
+#include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
 #include <TrustedTime.h>
@@ -472,11 +473,12 @@ void KOReaderSyncActivity::onExit() {
     skipNextAutoOpen = true;
     KOReaderSyncClient::setRequestTimeout(0);
   }
-  if (!wifiActivated) return;
 
-  WiFi.disconnect(false);
-  delay(30);
-  silentRestartToReader();
+  if (wifiActivated) {
+    WiFi.disconnect(false);
+    delay(30);
+    silentRestartToReader();
+  }
 }
 
 void KOReaderSyncActivity::chooseResultOption() {
@@ -653,24 +655,32 @@ void KOReaderSyncActivity::buildResultScreen(UiScreen& screen) {
   }
 }
 
-void KOReaderSyncActivity::render(RenderLock&&) {
-  Rect screen = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
-  int top = screen.y + screen.height / 2 - 40;
+// One paint for the whole AutoOpen session: repainting the same line would only add e-ink refreshes.
+void KOReaderSyncActivity::renderAutoStatus() {
+  if (autoStatusDrawn) return;
+  autoStatusDrawn = true;
 
+  const Rect screen = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+  const int top = screen.y + screen.height / 2 - 40;
+  renderer.clearScreen();
+  UITheme::drawCenteredText(renderer, screen, UI_10_FONT_ID, top, tr(STR_AUTO_SYNCING), true, EpdFontFamily::BOLD);
+  renderer.displayBuffer();
+}
+
+void KOReaderSyncActivity::render(RenderLock&&) {
   if (isAuto()) {
-    // One paint for the whole session: repainting the same line would only add e-ink refreshes.
-    if (autoStatusDrawn) return;
-    autoStatusDrawn = true;
-    renderer.clearScreen();
-    UITheme::drawCenteredText(renderer, screen, UI_10_FONT_ID, top, tr(STR_AUTO_SYNCING), true, EpdFontFamily::BOLD);
-    renderer.displayBuffer();
+    renderAutoStatus();
     return;
   }
 
   renderer.clearScreen();
+
+  Rect screen = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+
   GUI.drawHeader(renderer, UITheme::getInstance().getHeaderRect(renderer, true, false),
                  state == SHOWING_RESULT ? tr(STR_PROGRESS_FOUND) : tr(STR_KOREADER_SYNC));
 
+  int top = screen.y + screen.height / 2 - 40;
   if (state == NO_CREDENTIALS) {
     UITheme::drawCenteredText(renderer, screen, UI_10_FONT_ID, top, tr(STR_NO_CREDENTIALS_MSG), true,
                               EpdFontFamily::BOLD);

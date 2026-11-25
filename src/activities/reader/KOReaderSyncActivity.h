@@ -112,6 +112,7 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
   void returnToReader();
   bool isAuto() const { return mode == Mode::AutoOpen; }
   void startAutoOpen();
+  void renderAutoStatus();
   bool autoDeadlineExpired(const char* stage) const;
   // Caps the next request's waits to the session time left; false when too little is left to try.
   bool armAutoRequest(const char* stage) const;
