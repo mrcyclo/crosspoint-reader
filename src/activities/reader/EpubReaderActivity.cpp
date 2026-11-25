@@ -290,7 +290,7 @@ bool EpubReaderActivity::loadBook() {
   }
   epub = std::move(loadedEpub);
   vocabularyMetadata.reset();
-  syncPopupOnFirstPage = autoOpenSyncExpected();
+  autoOpenSyncPending = autoOpenSyncExpected();
 
   ImageBlock::clearRenderFailures();
   ImageBlock::setExtractor(epub.get(), [](void* ctx, const char* src, const char* dest) {
@@ -770,11 +770,11 @@ void EpubReaderActivity::loop() {
 
   rememberBookOnceRendered();
 
-  if (bookRemembered && !autoOpenSyncChecked) {
+  if ((bookRemembered || autoOpenSyncPending) && !autoOpenSyncChecked) {
     autoOpenSyncChecked = true;
     if (startAutoOpenSync()) return;
-    if (syncPopupOnFirstPage) {
-      syncPopupOnFirstPage = false;
+    if (autoOpenSyncPending) {
+      autoOpenSyncPending = false;
       requestUpdate();
     }
   }
@@ -1449,6 +1449,10 @@ bool EpubReaderActivity::startAutoOpenSync() {
   if (returningFromAutoOpen) return false;
   if (!syncOnOpenAllowed(silentBoot, bookPath)) return false;
 
+  // No page is drawn first, so the book is not remembered yet; the restart after the sync reopens
+  // APP_STATE.openEpubPath.
+  APP_STATE.openEpubPath = bookPath;
+  APP_STATE.saveToFile();
   return launchKOReaderSync(KOReaderSyncActivity::Mode::AutoOpen);
 }
 
@@ -1472,12 +1476,21 @@ bool EpubReaderActivity::launchKOReaderSync(const KOReaderSyncActivity::Mode mod
   const int totalPages = section ? section->estimatedTotalPages() : cachedChapterTotalPageCount;
 
   CrossPointPosition localPos = getCurrentPosition();
+  // An AutoOpen sync starts before any page is laid out; the offset loaded from progress.bin then
+  // anchors the position.
+  const bool autoOpenUnlaid = mode == KOReaderSyncActivity::Mode::AutoOpen && !section;
+  if (autoOpenUnlaid && currentSpineIndex == cachedSpineIndex && cachedVisibleTextOffset.has_value()) {
+    localPos.visibleTextOffset = *cachedVisibleTextOffset;
+    localPos.hasVisibleTextOffset = true;
+  }
   SavedProgressPosition localKoPos;
   const int tocIdx = epub->getTocIndexForSpineIndex(currentSpineIndex);
   std::string localChapterName = (tocIdx >= 0) ? epub->getTocItem(tocIdx).title : "";
   const std::string savedEpubPath = epub->getPath();
 
-  if (!saveProgress(currentSpineIndex, currentPage, totalPages)) {
+  // progress.bin already holds the position an AutoOpen sync starts from; saving without a section
+  // would drop its offset.
+  if (!autoOpenUnlaid && !saveProgress(currentSpineIndex, currentPage, totalPages)) {
     LOG_ERR("KOSync", "Aborting sync because current progress could not be saved");
     pendingSyncSaveError = true;
     requestUpdate();
@@ -1703,6 +1716,7 @@ void EpubReaderActivity::render(RenderLock&& lock) {
     loadFailurePopup.processRender(renderer, mappedInput);
     return;
   }
+  if (autoOpenSyncPending) return;
   ReaderActivity::render(std::move(lock));
 }
 
@@ -2075,10 +2089,6 @@ void EpubReaderActivity::renderBook() {
 
     const auto start = millis();
     renderContents(std::move(p), orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
-    if (syncPopupOnFirstPage) {
-      GUI.drawPopup(renderer, tr(STR_AUTO_SYNCING));
-      KOReaderSyncActivity::markAutoStatusShown();
-    }
     LOG_DBG("ERS", "Rendered page in %dms", millis() - start);
     lastRenderCompleteMs = millis();
     markPageRendered();

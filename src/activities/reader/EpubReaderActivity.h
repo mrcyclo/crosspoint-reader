@@ -214,13 +214,13 @@ class EpubReaderActivity final : public ReaderActivity {
   void openClippings();
   void applyProgressChange(const ProgressChangeResult& progress);
   bool launchKOReaderSync(KOReaderSyncActivity::Mode mode = KOReaderSyncActivity::Mode::Manual);
-  // Once per reader, after the first page is laid out.
+  // Once per reader: from the first loop when a sync is expected, else after the first page.
   bool startAutoOpenSync();
   // Same gates as startAutoOpenSync, without consuming its one-shot flags.
   bool autoOpenSyncExpected() const;
-  // Set at open when an automatic sync will follow: the first page carries the sync popup until the
-  // sync starts, or is redrawn without it when the sync is skipped.
-  bool syncPopupOnFirstPage = false;
+  // Set at open when an automatic sync will follow: nothing is drawn until it starts (the session
+  // paints its own status), and the page renders normally when it is skipped.
+  bool autoOpenSyncPending = false;
   bool autoOpenSyncChecked = false;
   unsigned long confirmLongPressThreshold() const;
   void toggleAutoPageTurn(uint8_t selectedPageTurnOption);
