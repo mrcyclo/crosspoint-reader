@@ -35,10 +35,7 @@ bool isEpubFile(const std::string& path) {
   if (!Storage.openFileForRead("SYNC", path.c_str(), file)) return false;
   file.read(magic, sizeof(magic));
   file.close();
-  return magic[0] == 'P'
-      && magic[1] == 'K'
-      && magic[2] == 3
-      && magic[3] == 4;
+  return magic[0] == 'P' && magic[1] == 'K' && magic[2] == 3 && magic[3] == 4;
 }
 
 std::optional<size_t> fileSize(const std::string& path) {
@@ -76,16 +73,14 @@ void LibrarySyncActivity::onExit() {
 
 void LibrarySyncActivity::launchWifiSelection() {
   state = State::WifiSelection;
-  startActivityForResult(
-      std::make_unique<WifiSelectionActivity>(renderer, mappedInput, /*autoConnect=*/true),
-      [this](const ActivityResult& result) {
-        if (result.isCancelled) {
-          exitWithResult();
-          return;
-        }
-        startSync();
-      }
-  );
+  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput, /*autoConnect=*/true),
+                         [this](const ActivityResult& result) {
+                           if (result.isCancelled) {
+                             exitWithResult();
+                             return;
+                           }
+                           startSync();
+                         });
 }
 
 void LibrarySyncActivity::startSync() {
@@ -125,9 +120,8 @@ void LibrarySyncActivity::loop() {
 
   int x = 0;
   int y = 0;
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)
-      || mappedInput.wasReleased(MappedInputManager::Button::Confirm)
-      || mappedInput.wasScreenTapped(x, y)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Back) ||
+      mappedInput.wasReleased(MappedInputManager::Button::Confirm) || mappedInput.wasScreenTapped(x, y)) {
     exitWithResult();
   }
 }
@@ -145,10 +139,7 @@ bool LibrarySyncActivity::fetchFeed() {
           parseOk = parser.feed(reinterpret_cast<const char*>(data), len);
           return parseOk;
         },
-        server.username,
-        server.password,
-        headers
-    );
+        server.username, server.password, headers);
     if (!fetched || !parseOk || !parser.finish()) {
       LOG_ERR("SYNC", "Feed page %d failed (HTTP %d): %s", page + 1, HttpDownloader::lastStatus(), url.c_str());
       return false;
@@ -169,8 +160,8 @@ bool LibrarySyncActivity::fetchFeed() {
 
 void LibrarySyncActivity::planJobs() {
   std::string text;
-  if (Storage.exists(autosync::SYNC_STATE_FILE)
-      && Storage.readFileToString("SYNC", autosync::SYNC_STATE_FILE, MAX_STATE_BYTES, text)) {
+  if (Storage.exists(autosync::SYNC_STATE_FILE) &&
+      Storage.readFileToString("SYNC", autosync::SYNC_STATE_FILE, MAX_STATE_BYTES, text)) {
     synced = autosync::parseSyncState(text);
   }
 
@@ -233,9 +224,8 @@ void LibrarySyncActivity::runNextJob() {
     return;
   }
 
-  if (job.action == autosync::BookAction::MoveAndRedownload
-      && Storage.exists(job.previousPath.c_str())
-      && !removeBookFile(job.previousPath)) {
+  if (job.action == autosync::BookAction::MoveAndRedownload && Storage.exists(job.previousPath.c_str()) &&
+      !removeBookFile(job.previousPath)) {
     LOG_ERR("SYNC", "Could not remove old copy %s", job.previousPath.c_str());
   }
   ++updated;
@@ -254,22 +244,16 @@ bool LibrarySyncActivity::downloadBook(const Job& job) {
     RenderLock lock(*this);  // the progress repaint may still be drawing with these caches
     fcm->releaseSdFontCaches();
   }
-  if (ESP.getFreeHeap() < HttpDownloader::MIN_TLS_FREE_HEAP
-      || ESP.getMaxAllocHeap() < HttpDownloader::MIN_TLS_MAX_ALLOC) {
+  if (ESP.getFreeHeap() < HttpDownloader::MIN_TLS_FREE_HEAP ||
+      ESP.getMaxAllocHeap() < HttpDownloader::MIN_TLS_MAX_ALLOC) {
     LOG_ERR("SYNC", "Low heap for download (%u free, %u max block)", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     return false;
   }
 
   LOG_INF("SYNC", "Downloading %s -> %s", entry.href.c_str(), job.dest.c_str());
   const auto result = HttpDownloader::downloadToFile(
-      entry.href,
-      staged,
-      [this](size_t, size_t) { pollCancel(true); },
-      &cancelRequested,
-      server.username,
-      server.password,
-      server.activeCustomHeaders()
-  );
+      entry.href, staged, [this](size_t, size_t) { pollCancel(true); }, &cancelRequested, server.username,
+      server.password, server.activeCustomHeaders());
   if (result != HttpDownloader::OK) {
     LOG_ERR("SYNC", "Download failed (%d): %s", static_cast<int>(result), entry.title.c_str());
     return false;
@@ -332,9 +316,8 @@ void LibrarySyncActivity::pollCancel(const bool refreshInput) {
   }
   int x = 0;
   int y = 0;
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)
-      || mappedInput.wasBackGesture()
-      || mappedInput.wasScreenTapped(x, y)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Back) || mappedInput.wasBackGesture() ||
+      mappedInput.wasScreenTapped(x, y)) {
     LOG_INF("SYNC", "Cancelled by user");
     cancelRequested = true;
   }

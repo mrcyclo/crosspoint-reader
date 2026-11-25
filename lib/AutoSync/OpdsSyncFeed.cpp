@@ -195,13 +195,8 @@ std::string serializeSyncState(const std::vector<SyncedBook>& books) {
   return out;
 }
 
-BookAction planBook(
-    const FeedEntry& entry,
-    const SyncedBook* previous,
-    const std::string& destPath,
-    const std::optional<size_t> destSize,
-    const bool previousExists
-) {
+BookAction planBook(const FeedEntry& entry, const SyncedBook* previous, const std::string& destPath,
+                    const std::optional<size_t> destSize, const bool previousExists) {
   if (!previous) {
     if (!destSize) return BookAction::Skip;
     if (entry.length > 0 && *destSize == entry.length) return BookAction::Adopt;

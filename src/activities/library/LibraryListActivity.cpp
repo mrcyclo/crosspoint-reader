@@ -345,22 +345,20 @@ bool LibraryListActivity::syncBooksAvailable() { return OPDS_STORE.getCount() > 
 
 void LibraryListActivity::launchSyncBooks() {
   app.clearTapFlash();
-  startActivityForResult(
-      std::make_unique<LibrarySyncActivity>(renderer, mappedInput),
-      [this](const ActivityResult& result) {
-        const auto* sync = std::get_if<SyncBooksResult>(&result.data);
-        if (sync && sync->changed) {
-          // A moved book leaves its old path in the store; prune with the index closed.
-          index.close();
-          if (RECENT_BOOKS.pruneMissing()) {
-            RECENT_BOOKS.saveToFile();
-          }
-          promptRebuildIndex();
-          return;
-        }
-        requestUpdate(true);
-      }
-  );
+  startActivityForResult(std::make_unique<LibrarySyncActivity>(renderer, mappedInput),
+                         [this](const ActivityResult& result) {
+                           const auto* sync = std::get_if<SyncBooksResult>(&result.data);
+                           if (sync && sync->changed) {
+                             // A moved book leaves its old path in the store; prune with the index closed.
+                             index.close();
+                             if (RECENT_BOOKS.pruneMissing()) {
+                               RECENT_BOOKS.saveToFile();
+                             }
+                             promptRebuildIndex();
+                             return;
+                           }
+                           requestUpdate(true);
+                         });
 }
 
 #if FREEINK_CAP_TOUCH

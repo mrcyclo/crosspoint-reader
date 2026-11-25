@@ -56,12 +56,7 @@ constexpr const char* SYNC_STATE_FILE = "/.crosspoint/opds-sync.tsv";
 // Adopt records an untracked copy whose size matches the feed; Forget drops a tracked
 // book the user deleted from the card.
 enum class BookAction { Skip, Adopt, Forget, Redownload, MoveAndRedownload };
-BookAction planBook(
-    const FeedEntry& entry,
-    const SyncedBook* previous,
-    const std::string& destPath,
-    std::optional<size_t> destSize,
-    bool previousExists
-);
+BookAction planBook(const FeedEntry& entry, const SyncedBook* previous, const std::string& destPath,
+                    std::optional<size_t> destSize, bool previousExists);
 
 }  // namespace autosync

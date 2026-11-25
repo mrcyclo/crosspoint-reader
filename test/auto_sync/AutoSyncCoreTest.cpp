@@ -24,15 +24,11 @@ TEST(DeadlineTest, RemainingIsZeroWhenExpired) {
   EXPECT_EQ(d.remaining(99999), 0u);
 }
 
-TEST(AutoSyncPolicyTest, SkipsOnSilentBoot) {
-  EXPECT_FALSE(shouldSyncOnOpen({true, true, true, true}));
-}
+TEST(AutoSyncPolicyTest, SkipsOnSilentBoot) { EXPECT_FALSE(shouldSyncOnOpen({true, true, true, true})); }
 
 TEST(AutoSyncPolicyTest, SkipsWhenDisabled) {
   EXPECT_FALSE(shouldSyncOnOpen({false, true, false, true}));
   EXPECT_FALSE(shouldSyncOnOpen({true, false, false, true}));
 }
 
-TEST(AutoSyncPolicyTest, SyncsOnNormalOpen) {
-  EXPECT_TRUE(shouldSyncOnOpen({true, true, false, true}));
-}
+TEST(AutoSyncPolicyTest, SyncsOnNormalOpen) { EXPECT_TRUE(shouldSyncOnOpen({true, true, false, true})); }
